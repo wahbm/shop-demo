@@ -11,6 +11,13 @@
 - Automatic deploy: push to `main` runs `.github/workflows/deploy.yml`.
 - Completed: registration/login, catalog/category/search, product details, cart, address CRUD, simulated paid checkout, orders, API/UI Playwright coverage, D1 seed data, Worker deployment.
 
+## Latest handoff (2026-07-23)
+
+- Every element that exposes `data-testid` now also has an identical `id`, including dynamic product, cart, address, and order selectors.
+- Every `input` has a semantic `name` attribute; the search label now targets `search-input` to match its stable selector.
+- Existing `data-testid` values were preserved, so current Playwright selectors remain compatible while browser automation can also use `id` or `name`.
+- Validation completed: `pnpm exec tsc --noEmit`, `pnpm build`, and `pnpm test` (4 Playwright tests passed).
+
 ## Commands
 
 ```bash
