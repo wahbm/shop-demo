@@ -4,32 +4,157 @@ import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate,
 import { Address, api, CartItem, money, Product, User } from './api';
 import './styles.css';
 
-type AppContext = { user: User | null; refreshUser: () => Promise<void>; cartCount: number; refreshCart: () => Promise<void> };
+type AppContext = { user: User | null; authReady: boolean; refreshUser: () => Promise<void>; cartCount: number; refreshCart: () => Promise<void> };
+type AddressFormState = { recipient: string; phone: string; detail: string; isDefault: boolean };
+
 const Context = createContext<AppContext>(null!);
 const useApp = () => useContext(Context);
+const emptyAddressForm = (): AddressFormState => ({ recipient: '', phone: '', detail: '', isDefault: true });
 
 function Notice({ message }: { message: string }) { return <p className="notice" role="alert">{message}</p>; }
+
 function Header() {
-  const { user, refreshUser, cartCount } = useApp(); const navigate = useNavigate(); const [query, setQuery] = useState('');
+  const { user, refreshUser, cartCount } = useApp();
+  const navigate = useNavigate();
+  const [query, setQuery] = useState('');
   const logout = async () => { await api('/auth/logout', { method: 'POST' }); await refreshUser(); navigate('/'); };
-  return <header><div className="topbar"><Link className="brand" to="/">微光集市</Link><nav><Link to="/products">全部商品</Link><Link to="/orders">我的订单</Link><Link to="/account/addresses">地址簿</Link></nav><form className="search" onSubmit={(e) => { e.preventDefault(); navigate(`/products?q=${encodeURIComponent(query)}`); }}><label className="sr-only" htmlFor="search-input">搜索商品</label><input id="search-input" name="query" data-testid="search-input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜索你想要的好物"/><button id="search-submit" data-testid="search-submit">搜索</button></form><Link id="cart-link" className="cart-link" data-testid="cart-link" to="/cart">购物车 <b>{cartCount}</b></Link>{user ? <button id="logout-button" className="link-button" onClick={logout} data-testid="logout-button">退出（{user.name}）</button> : <Link id="login-link" data-testid="login-link" to="/login">登录 / 注册</Link>}</div></header>;
+
+  return <header><div className="topbar">
+    <Link className="brand" to="/">微光集市</Link>
+    <nav aria-label="主导航">
+      <Link to="/products">全部商品</Link>
+      <div id="account-menu" className="account-menu" data-testid="account-menu">
+        <button className="account-menu-trigger" type="button" aria-haspopup="true">账户中心 <span aria-hidden="true">⌄</span></button>
+        <div className="account-menu-panel">
+          <Link id="account-menu-orders" data-testid="account-menu-orders" to="/orders">我的订单</Link>
+          <Link id="account-menu-addresses" data-testid="account-menu-addresses" to="/account/addresses">地址簿</Link>
+        </div>
+      </div>
+    </nav>
+    <form className="search" onSubmit={(event) => { event.preventDefault(); navigate(`/products?q=${encodeURIComponent(query)}`); }}>
+      <label className="sr-only" htmlFor="search-input">搜索商品</label>
+      <input id="search-input" name="query" data-testid="search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索你想要的好物" />
+      <button id="search-submit" data-testid="search-submit">搜索</button>
+    </form>
+    <Link id="cart-link" className="cart-link" data-testid="cart-link" to="/cart">购物车 <b>{cartCount}</b></Link>
+    {user ? <div className="user-actions"><span id="user-phone" data-testid="user-phone">{user.phone}</span><button id="logout-button" className="link-button" onClick={logout}>退出登录</button></div> : <Link id="login-link" data-testid="login-link" to="/login">登录 / 注册</Link>}
+  </div></header>;
 }
-function Layout({ children }: { children: React.ReactNode }) { return <><Header/><main>{children}</main><footer>微光集市 · 稳定的本地自动化测试演示商城</footer></>; }
-function useProducts(query = '') { const [products, setProducts] = useState<Product[]>([]); useEffect(() => { api<{ products: Product[] }>(`/products${query}`).then((r) => setProducts(r.products)); }, [query]); return products; }
+
+function Layout({ children }: { children: React.ReactNode }) { return <><Header /><main>{children}</main><footer>微光集市 · 稳定的本地自动化测试演示商城</footer></>; }
+function useProducts(query = '') { const [products, setProducts] = useState<Product[]>([]); useEffect(() => { api<{ products: Product[] }>(`/products${query}`).then((result) => setProducts(result.products)); }, [query]); return products; }
 function ProductCard({ product }: { product: Product }) { return <article id={`product-card-${product.id}`} className="product-card" data-testid={`product-card-${product.id}`}><Link to={`/products/${product.id}`}><div className="product-emoji">{product.emoji}</div><span className="category">{product.categoryName}</span><h3>{product.name}</h3><p>{product.description}</p><strong>{money(product.price)}</strong></Link></article>; }
-function Home() { const products = useProducts(); const [categories, setCategories] = useState<any[]>([]); useEffect(() => { api<{categories:any[]}>('/categories').then((r) => setCategories(r.categories)); }, []); return <><section className="hero"><div><span>LOCAL SHOP DEMO</span><h1>把自动化测试，做得稳定又好看。</h1><p>完整购物链路、固定数据、无外部依赖。</p><Link className="primary" to="/products">开始挑选</Link></div><div className="hero-orb">✦</div></section><section><div className="section-title"><h2>分类探索</h2><Link to="/products">查看全部</Link></div><div className="category-grid">{categories.map((c) => <Link key={c.id} id={`category-${c.id}`} data-testid={`category-${c.id}`} to={`/products?categoryId=${c.id}`}>{c.name}</Link>)}</div></section><section><div className="section-title"><h2>精选好物</h2><span>24 件固定种子商品</span></div><div className="product-grid">{products.slice(0, 8).map((p) => <ProductCard product={p} key={p.id}/>)}</div></section></>; }
-function Products() { const [params] = useSearchParams(); const q = params.get('q') || ''; const categoryId = params.get('categoryId') || ''; const products = useProducts(`?q=${encodeURIComponent(q)}${categoryId ? `&categoryId=${categoryId}` : ''}`); return <section><div className="page-heading"><p>商品目录</p><h1>{q ? `“${q}” 的搜索结果` : '发现日常好物'}</h1></div>{products.length ? <div className="product-grid">{products.map((p) => <ProductCard product={p} key={p.id}/>)}</div> : <div id="empty-search" className="empty" data-testid="empty-search">没有找到匹配商品，换个关键词试试。</div>}</section>; }
-function Auth({ mode }: { mode: 'login' | 'register' }) {
-  const { refreshUser } = useApp(); const navigate = useNavigate(); const [error, setError] = useState(''); const [form, setForm] = useState({ phone: '', password: '', confirmPassword: '', captcha: '', name: '' });
-  const submit = async (e: React.FormEvent) => { e.preventDefault(); setError(''); try { await api(`/auth/${mode}`, { method: 'POST', body: JSON.stringify(form) }); await refreshUser(); navigate('/'); } catch (err: any) { setError(err.message); } };
-  return <div className="auth-wrap"><form className="auth-card" onSubmit={submit}><p className="eyebrow">微光集市</p><h1>{mode === 'login' ? '欢迎回来' : '创建新账号'}</h1><p>{mode === 'login' ? '使用演示账号体验完整下单流程。' : '注册后即可开始你的购物练习。'}</p>{mode === 'register' && <label>昵称<input id="register-name" name="name" data-testid="register-name" value={form.name} onChange={(e) => setForm({...form, name:e.target.value})} placeholder="例如：小光"/></label>}<label>手机号码<input id="phone-input" name="phone" data-testid="phone-input" value={form.phone} onChange={(e) => setForm({...form, phone:e.target.value})} placeholder="11 位手机号码"/></label><label>密码<input id="password-input" name="password" data-testid="password-input" type="password" value={form.password} onChange={(e) => setForm({...form, password:e.target.value})} placeholder="至少 6 位"/></label>{mode === 'register' && <label>确认密码<input id="confirm-password-input" name="confirmPassword" data-testid="confirm-password-input" type="password" value={form.confirmPassword} onChange={(e) => setForm({...form, confirmPassword:e.target.value})}/></label>}<label>验证码 <span className="captcha">固定验证码：1234</span><input id="captcha-input" name="captcha" data-testid="captcha-input" value={form.captcha} onChange={(e) => setForm({...form, captcha:e.target.value})} placeholder="请输入 1234"/></label>{error && <Notice message={error}/>}<button id={mode === 'login' ? 'login-submit' : 'register-submit'} className="primary wide" data-testid={mode === 'login' ? 'login-submit' : 'register-submit'}>{mode === 'login' ? '登 录' : '同意协议并注册'}</button><p>{mode === 'login' ? <>还没有账号？<Link to="/register">立即注册</Link></> : <>已有账号？<Link to="/login">去登录</Link></>}</p><small>演示账号：13800000000 / Demo1234</small></form></div>;
+
+function Home() {
+  const products = useProducts();
+  const [categories, setCategories] = useState<any[]>([]);
+  useEffect(() => { api<{ categories: any[] }>('/categories').then((result) => setCategories(result.categories)); }, []);
+  return <><section className="hero"><div><span>LOCAL SHOP DEMO</span><h1>把自动化测试，做得稳定又好看。</h1><p>完整购物链路、固定数据、无外部依赖。</p><Link className="primary" to="/products">开始挑选</Link></div><div className="hero-orb">✦</div></section><section><div className="section-title"><h2>分类探索</h2><Link to="/products">查看全部</Link></div><div className="category-grid">{categories.map((category) => <Link key={category.id} id={`category-${category.id}`} data-testid={`category-${category.id}`} to={`/products?categoryId=${category.id}`}>{category.name}</Link>)}</div></section><section><div className="section-title"><h2>精选好物</h2><span>24 件固定种子商品</span></div><div className="product-grid">{products.slice(0, 8).map((product) => <ProductCard product={product} key={product.id} />)}</div></section></>;
 }
-function ProductDetail() { const id = Number(useLocation().pathname.split('/').pop()); const [product, setProduct] = useState<Product | null>(null); const { user, refreshCart } = useApp(); const navigate = useNavigate(); const [message, setMessage] = useState(''); const [quantity, setQuantity] = useState(1); useEffect(() => { api<Product>(`/products/${id}`).then(setProduct).catch((e) => setMessage(e.message)); }, [id]); if (!product) return <div className="empty">{message || '正在加载商品…'}</div>; const add = async () => { if (!user) return navigate('/login'); try { await api('/cart', { method: 'POST', body: JSON.stringify({ productId: product.id, quantity }) }); await refreshCart(); setMessage('已加入购物车'); } catch (err: any) { setMessage(err.message); } }; return <section className="detail"><div className="detail-emoji">{product.emoji}</div><div><span className="category">{product.categoryName}</span><h1>{product.name}</h1><p className="detail-desc">{product.description}</p><strong className="price">{money(product.price)}</strong><p>剩余库存：<b id="product-stock" data-testid="product-stock">{product.stock}</b></p><label>购买数量 <input id="quantity-input" name="quantity" data-testid="quantity-input" type="number" min="1" max={product.stock} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))}/></label><button id="add-to-cart" className="primary" data-testid="add-to-cart" onClick={add}>加入购物车</button>{message && <Notice message={message}/>}</div></section>; }
-function RequireAuth({ children }: { children: React.ReactNode }) { const { user } = useApp(); const location = useLocation(); return user ? <>{children}</> : <Navigate to="/login" state={{ from: location.pathname }} replace/>; }
-function Cart() { const { refreshCart } = useApp(); const [items, setItems] = useState<CartItem[]>([]); const [message, setMessage] = useState(''); const navigate = useNavigate(); const load = () => api<{items: CartItem[]}>('/cart').then((r) => setItems(r.items)).catch((e) => setMessage(e.message)); useEffect(() => { load(); }, []); const update = async (item: CartItem, quantity: number) => { try { await api(`/cart/${item.productId}`, { method: 'PATCH', body: JSON.stringify({ quantity }) }); await load(); await refreshCart(); } catch (e: any) { setMessage(e.message); } }; const remove = async (id: number) => { await api(`/cart/${id}`, {method:'DELETE'}); await load(); await refreshCart(); }; const total = items.reduce((s, i) => s + i.price * i.quantity, 0); return <section><div className="page-heading"><p>购物车</p><h1>准备结算的好物</h1></div>{message && <Notice message={message}/>} {!items.length ? <div id="empty-cart" className="empty" data-testid="empty-cart">购物车还是空的。<Link to="/products">去逛逛</Link></div> : <><div className="cart-list">{items.map((item) => <article id={`cart-item-${item.productId}`} className="cart-item" key={item.productId} data-testid={`cart-item-${item.productId}`}><span className="cart-emoji">{item.emoji}</span><div><h3>{item.name}</h3><strong>{money(item.price)}</strong></div><label>数量<input id={`cart-quantity-${item.productId}`} name={`cart-quantity-${item.productId}`} data-testid={`cart-quantity-${item.productId}`} type="number" min="1" max={item.stock} value={item.quantity} onChange={(e) => update(item, Number(e.target.value))}/></label><button className="text-danger" onClick={() => remove(item.productId)}>删除</button></article>)}</div><div className="total-bar"><span>合计 <b id="cart-total" data-testid="cart-total">{money(total)}</b></span><button id="checkout-button" className="primary" data-testid="checkout-button" onClick={() => navigate('/checkout')}>去结算</button></div></>}</section>; }
-function Addresses({ selectable = false, onSelect }: { selectable?: boolean; onSelect?: (id: number) => void }) { const [addresses, setAddresses] = useState<Address[]>([]); const [form, setForm] = useState({recipient:'',phone:'',detail:'',isDefault:true}); const [error,setError] = useState(''); const load = () => api<{addresses:Address[]}>('/addresses').then((r) => setAddresses(r.addresses)); useEffect(() => { load(); }, []); const save = async (e: React.FormEvent) => { e.preventDefault(); try { await api('/addresses', {method:'POST',body:JSON.stringify(form)}); setForm({recipient:'',phone:'',detail:'',isDefault:true}); setError(''); load(); } catch (err:any) { setError(err.message); } }; return <div className="addresses"><div className="address-list">{addresses.map((a) => <button key={a.id} id={`address-${a.id}`} data-testid={`address-${a.id}`} className={selectable ? 'address selectable' : 'address'} onClick={() => onSelect?.(a.id)}><b>{a.recipient} · {a.phone}</b><span>{a.detail}</span>{a.is_default ? <small>默认地址</small> : null}</button>)} {!addresses.length && <div className="empty">还没有地址，请先新增。</div>}</div><form className="address-form" onSubmit={save}><h2>新增收货地址</h2><label>收货人<input id="address-recipient" name="recipient" data-testid="address-recipient" value={form.recipient} onChange={(e)=>setForm({...form,recipient:e.target.value})}/></label><label>手机号码<input id="address-phone" name="phone" data-testid="address-phone" value={form.phone} onChange={(e)=>setForm({...form,phone:e.target.value})}/></label><label>详细地址<textarea id="address-detail" name="detail" data-testid="address-detail" value={form.detail} onChange={(e)=>setForm({...form,detail:e.target.value})}/></label><label className="checkbox"><input name="isDefault" type="checkbox" checked={form.isDefault} onChange={(e)=>setForm({...form,isDefault:e.target.checked})}/>设为默认地址</label>{error && <Notice message={error}/>}<button id="add-address" data-testid="add-address" className="primary">保存地址</button></form></div>; }
-function AddressPage() { return <section><div className="page-heading"><p>账户设置</p><h1>收货地址簿</h1></div><Addresses/></section>; }
-function Checkout() { const navigate = useNavigate(); const [addressId,setAddressId] = useState<number | null>(null); const [message,setMessage] = useState(''); const checkout = async () => { try { const r = await api<{order:{id:number;orderNo:string}}>('/checkout',{method:'POST',body:JSON.stringify({addressId})}); navigate(`/orders?created=${r.order.orderNo}`); } catch(e:any){setMessage(e.message);} }; return <section><div className="page-heading"><p>确认订单</p><h1>选择收货地址</h1></div><p>点击一张地址卡片后，使用本地模拟支付完成下单。</p><Addresses selectable onSelect={setAddressId}/>{message && <Notice message={message}/>}<div className="total-bar"><span>{addressId ? '已选择收货地址' : '请选择地址'}</span><button id="pay-button" className="primary" data-testid="pay-button" disabled={!addressId} onClick={checkout}>模拟支付并下单</button></div></section>; }
-function Orders() { const [orders,setOrders] = useState<any[]>([]); const [params] = useSearchParams(); useEffect(()=>{api<{orders:any[]}>('/orders').then((r)=>setOrders(r.orders));},[]); return <section><div className="page-heading"><p>订单中心</p><h1>我的订单</h1></div>{params.get('created') && <Notice message={`订单 ${params.get('created')} 已支付成功`}/>}<div className="order-list">{orders.map((o)=> <article id={`order-${o.order_no}`} className="order" key={o.id} data-testid={`order-${o.order_no}`}><div><span>{o.order_no}</span><h3>{o.status}</h3></div><strong>{money(o.total)}</strong><small>{new Date(o.created_at).toLocaleString('zh-CN')}</small></article>)}</div></section>; }
-function App() { const [user,setUser] = useState<User|null>(null); const [cartCount,setCartCount] = useState(0); const refreshUser = async () => { const r = await api<{user:User|null}>('/auth/me'); setUser(r.user); }; const refreshCart = async () => { try { const r=await api<{items:CartItem[]}>('/cart'); setCartCount(r.items.reduce((s,i)=>s+i.quantity,0)); } catch { setCartCount(0); } }; useEffect(()=>{refreshUser();},[]); useEffect(()=>{refreshCart();},[user?.id]); return <Context.Provider value={{user,refreshUser,cartCount,refreshCart}}><Layout><Routes><Route path="/" element={<Home/>}/><Route path="/login" element={<Auth mode="login"/>}/><Route path="/register" element={<Auth mode="register"/>}/><Route path="/products" element={<Products/>}/><Route path="/products/:id" element={<ProductDetail/>}/><Route path="/cart" element={<RequireAuth><Cart/></RequireAuth>}/><Route path="/checkout" element={<RequireAuth><Checkout/></RequireAuth>}/><Route path="/orders" element={<RequireAuth><Orders/></RequireAuth>}/><Route path="/account/addresses" element={<RequireAuth><AddressPage/></RequireAuth>}/></Routes></Layout></Context.Provider>; }
-createRoot(document.getElementById('root')!).render(<StrictMode><BrowserRouter><App/></BrowserRouter></StrictMode>);
+
+function Products() {
+  const [params] = useSearchParams();
+  const query = params.get('q') || '';
+  const categoryId = params.get('categoryId') || '';
+  const products = useProducts(`?q=${encodeURIComponent(query)}${categoryId ? `&categoryId=${categoryId}` : ''}`);
+  return <section><div className="page-heading"><p>商品目录</p><h1>{query ? `“${query}” 的搜索结果` : '发现日常好物'}</h1></div>{products.length ? <div className="product-grid">{products.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <div id="empty-search" className="empty" data-testid="empty-search">没有找到匹配商品，换个关键词试试。</div>}</section>;
+}
+
+function Auth({ mode }: { mode: 'login' | 'register' }) {
+  const { refreshUser } = useApp();
+  const navigate = useNavigate();
+  const [error, setError] = useState('');
+  const [form, setForm] = useState({ phone: '', password: '', confirmPassword: '', captcha: '', name: '' });
+  const submit = async (event: React.FormEvent) => { event.preventDefault(); setError(''); try { await api(`/auth/${mode}`, { method: 'POST', body: JSON.stringify(form) }); await refreshUser(); navigate('/'); } catch (err: any) { setError(err.message); } };
+  return <div className="auth-wrap"><form className="auth-card" onSubmit={submit}><p className="eyebrow">微光集市</p><h1>{mode === 'login' ? '欢迎回来' : '创建新账号'}</h1><p>{mode === 'login' ? '使用演示账号体验完整下单流程。' : '注册后即可开始你的购物练习。'}</p>{mode === 'register' && <label>昵称<input id="register-name" name="name" data-testid="register-name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="例如：小光" /></label>}<label>手机号码<input id="phone-input" name="phone" data-testid="phone-input" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="11 位手机号码" /></label><label>密码<input id="password-input" name="password" data-testid="password-input" type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="至少 6 位" /></label>{mode === 'register' && <label>确认密码<input id="confirm-password-input" name="confirmPassword" data-testid="confirm-password-input" type="password" value={form.confirmPassword} onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })} /></label>}<label>验证码 <span className="captcha">固定验证码：1234</span><input id="captcha-input" name="captcha" data-testid="captcha-input" value={form.captcha} onChange={(event) => setForm({ ...form, captcha: event.target.value })} placeholder="请输入 1234" /></label>{error && <Notice message={error} />}<button id={mode === 'login' ? 'login-submit' : 'register-submit'} className="primary wide" data-testid={mode === 'login' ? 'login-submit' : 'register-submit'}>{mode === 'login' ? '登 录' : '同意协议并注册'}</button><p>{mode === 'login' ? <>还没有账号？<Link to="/register">立即注册</Link></> : <>已有账号？<Link to="/login">去登录</Link></>}</p><small>演示账号：13800000000 / Demo1234</small></form></div>;
+}
+
+function ProductDetail() {
+  const id = Number(useLocation().pathname.split('/').pop());
+  const [product, setProduct] = useState<Product | null>(null);
+  const { user, refreshCart } = useApp();
+  const navigate = useNavigate();
+  const [message, setMessage] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  useEffect(() => { api<Product>(`/products/${id}`).then(setProduct).catch((error) => setMessage(error.message)); }, [id]);
+  if (!product) return <div className="empty">{message || '正在加载商品…'}</div>;
+  const add = async () => { if (!user) return navigate('/login'); try { await api('/cart', { method: 'POST', body: JSON.stringify({ productId: product.id, quantity }) }); await refreshCart(); setMessage('已加入购物车'); } catch (error: any) { setMessage(error.message); } };
+  return <section className="detail"><div className="detail-emoji">{product.emoji}</div><div><span className="category">{product.categoryName}</span><h1>{product.name}</h1><p className="detail-desc">{product.description}</p><strong className="price">{money(product.price)}</strong><p>剩余库存：<b id="product-stock" data-testid="product-stock">{product.stock}</b></p><label>购买数量 <input id="quantity-input" name="quantity" data-testid="quantity-input" type="number" min="1" max={product.stock} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} /></label><button id="add-to-cart" className="primary" data-testid="add-to-cart" onClick={add}>加入购物车</button>{message && <Notice message={message} />}</div></section>;
+}
+
+function RequireAuth({ children }: { children: React.ReactNode }) { const { user, authReady } = useApp(); const location = useLocation(); if (!authReady) return <div className="empty">正在加载账户信息…</div>; return user ? <>{children}</> : <Navigate to="/login" state={{ from: location.pathname }} replace />; }
+
+function Cart() {
+  const { refreshCart } = useApp();
+  const [items, setItems] = useState<CartItem[]>([]);
+  const [message, setMessage] = useState('');
+  const navigate = useNavigate();
+  const load = () => api<{ items: CartItem[] }>('/cart').then((result) => setItems(result.items)).catch((error) => setMessage(error.message));
+  useEffect(() => { load(); }, []);
+  const update = async (item: CartItem, quantity: number) => { try { await api(`/cart/${item.productId}`, { method: 'PATCH', body: JSON.stringify({ quantity }) }); await load(); await refreshCart(); } catch (error: any) { setMessage(error.message); } };
+  const remove = async (id: number) => { await api(`/cart/${id}`, { method: 'DELETE' }); await load(); await refreshCart(); };
+  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  return <section><div className="page-heading"><p>购物车</p><h1>准备结算的好物</h1></div>{message && <Notice message={message} />}{!items.length ? <div id="empty-cart" className="empty" data-testid="empty-cart">购物车还是空的。<Link to="/products">去逛逛</Link></div> : <><div className="cart-list">{items.map((item) => <article id={`cart-item-${item.productId}`} className="cart-item" key={item.productId} data-testid={`cart-item-${item.productId}`}><span className="cart-emoji">{item.emoji}</span><div><h3>{item.name}</h3><strong>{money(item.price)}</strong></div><label>数量<input id={`cart-quantity-${item.productId}`} name={`cart-quantity-${item.productId}`} data-testid={`cart-quantity-${item.productId}`} type="number" min="1" max={item.stock} value={item.quantity} onChange={(event) => update(item, Number(event.target.value))} /></label><button className="text-danger" onClick={() => remove(item.productId)}>删除</button></article>)}</div><div className="total-bar"><span>合计 <b id="cart-total" data-testid="cart-total">{money(total)}</b></span><button id="checkout-button" className="primary" data-testid="checkout-button" onClick={() => navigate('/checkout')}>去结算</button></div></>}</section>;
+}
+
+function AddressFields({ form, setForm }: { form: AddressFormState; setForm: React.Dispatch<React.SetStateAction<AddressFormState>> }) {
+  return <><label>收货人<input id="address-recipient" name="recipient" data-testid="address-recipient" value={form.recipient} onChange={(event) => setForm({ ...form, recipient: event.target.value })} /></label><label>手机号码<input id="address-phone" name="phone" data-testid="address-phone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label><label>详细地址<textarea id="address-detail" name="detail" data-testid="address-detail" value={form.detail} onChange={(event) => setForm({ ...form, detail: event.target.value })} /></label><label className="checkbox"><input name="isDefault" type="checkbox" checked={form.isDefault} onChange={(event) => setForm({ ...form, isDefault: event.target.checked })} />设为默认地址</label></>;
+}
+
+function AddressPicker({ onSelect }: { onSelect: (id: number) => void }) {
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [form, setForm] = useState<AddressFormState>(emptyAddressForm);
+  const [error, setError] = useState('');
+  const load = () => api<{ addresses: Address[] }>('/addresses').then((result) => setAddresses(result.addresses));
+  useEffect(() => { load(); }, []);
+  const save = async (event: React.FormEvent) => { event.preventDefault(); try { await api('/addresses', { method: 'POST', body: JSON.stringify(form) }); setForm(emptyAddressForm()); setError(''); await load(); } catch (err: any) { setError(err.message); } };
+  return <div className="addresses"><div className="address-list">{addresses.map((address) => <button key={address.id} id={`address-${address.id}`} data-testid={`address-${address.id}`} className="address selectable" onClick={() => onSelect(address.id)}><b>{address.recipient} · {address.phone}</b><span>{address.detail}</span>{address.is_default ? <small>默认地址</small> : null}</button>)} {!addresses.length && <div className="empty">还没有地址，请先新增。</div>}</div><form className="address-form" onSubmit={save}><h2>新增收货地址</h2><AddressFields form={form} setForm={setForm} />{error && <Notice message={error} />}<button id="add-address" data-testid="add-address" className="primary">保存地址</button></form></div>;
+}
+
+function AccountLayout({ active, children }: { active: 'orders' | 'addresses'; children: React.ReactNode }) {
+  return <section className="account-page"><aside className="account-sidebar"><h2>账户中心</h2><Link className={active === 'orders' ? 'active' : ''} to="/orders">我的订单</Link><Link className={active === 'addresses' ? 'active' : ''} to="/account/addresses">地址簿</Link></aside><div className="account-content">{children}</div></section>;
+}
+
+function AddressPage() {
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [form, setForm] = useState<AddressFormState>(emptyAddressForm);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [error, setError] = useState('');
+  const load = () => api<{ addresses: Address[] }>('/addresses').then((result) => setAddresses(result.addresses));
+  useEffect(() => { load(); }, []);
+  const openCreate = () => { setEditingId(null); setForm(emptyAddressForm()); setError(''); setEditorOpen(true); };
+  const openEdit = (address: Address) => { setEditingId(address.id); setForm({ recipient: address.recipient, phone: address.phone, detail: address.detail, isDefault: Boolean(address.is_default) }); setError(''); setEditorOpen(true); };
+  const save = async (event: React.FormEvent) => { event.preventDefault(); try { await api(editingId ? `/addresses/${editingId}` : '/addresses', { method: editingId ? 'PATCH' : 'POST', body: JSON.stringify(form) }); await load(); setEditorOpen(false); setEditingId(null); setForm(emptyAddressForm()); } catch (err: any) { setError(err.message); } };
+  const remove = async (id: number) => { try { await api(`/addresses/${id}`, { method: 'DELETE' }); await load(); } catch (err: any) { setError(err.message); } };
+  const makeDefault = async (address: Address) => { try { await api(`/addresses/${address.id}`, { method: 'PATCH', body: JSON.stringify({ ...address, isDefault: true }) }); await load(); } catch (err: any) { setError(err.message); } };
+  return <AccountLayout active="addresses"><div className="account-heading"><div><p>账户设置</p><h1>地址管理</h1></div><button id="new-address-button" data-testid="new-address-button" className="text-link" onClick={openCreate}>添加新地址</button></div>{error && <Notice message={error} />}<div className="address-table-wrap"><table className="address-table"><thead><tr><th>收货人</th><th>收货地址</th><th>联系电话</th><th>操作</th></tr></thead><tbody>{addresses.map((address) => <tr key={address.id} id={`address-row-${address.id}`} data-testid={`address-row-${address.id}`}><td>{address.recipient}{address.is_default ? <small className="default-badge">默认</small> : null}</td><td>{address.detail}</td><td>{address.phone}</td><td className="address-actions"><button id={`edit-address-${address.id}`} data-testid={`edit-address-${address.id}`} onClick={() => openEdit(address)}>编辑</button>{!address.is_default && <button id={`set-default-address-${address.id}`} data-testid={`set-default-address-${address.id}`} onClick={() => makeDefault(address)}>设为默认</button>}<button id={`delete-address-${address.id}`} data-testid={`delete-address-${address.id}`} className="text-danger" onClick={() => remove(address.id)}>删除</button></td></tr>)}</tbody></table>{!addresses.length && <div className="empty">还没有地址，点击右上角添加新地址。</div>}<p className="address-count">已保存 <b>{addresses.length}</b> 条地址。</p></div>{editorOpen && <form className="address-editor" onSubmit={save}><div className="editor-heading"><h2>{editingId ? '编辑收货地址' : '新增收货地址'}</h2><button id="cancel-address-edit" type="button" onClick={() => setEditorOpen(false)}>取消</button></div><AddressFields form={form} setForm={setForm} /><button id="save-address" data-testid="save-address" className="primary">{editingId ? '保存修改' : '保存地址'}</button></form>}</AccountLayout>;
+}
+
+function Checkout() {
+  const navigate = useNavigate();
+  const [addressId, setAddressId] = useState<number | null>(null);
+  const [message, setMessage] = useState('');
+  const checkout = async () => { try { const result = await api<{ order: { id: number; orderNo: string } }>('/checkout', { method: 'POST', body: JSON.stringify({ addressId }) }); navigate(`/orders?created=${result.order.orderNo}`); } catch (error: any) { setMessage(error.message); } };
+  return <section><div className="page-heading"><p>确认订单</p><h1>选择收货地址</h1></div><p>点击一张地址卡片后，使用本地模拟支付完成下单。</p><AddressPicker onSelect={setAddressId} />{message && <Notice message={message} />}<div className="total-bar"><span>{addressId ? '已选择收货地址' : '请选择地址'}</span><button id="pay-button" className="primary" data-testid="pay-button" disabled={!addressId} onClick={checkout}>模拟支付并下单</button></div></section>;
+}
+
+function Orders() {
+  const [orders, setOrders] = useState<any[]>([]);
+  const [params] = useSearchParams();
+  useEffect(() => { api<{ orders: any[] }>('/orders').then((result) => setOrders(result.orders)); }, []);
+  return <AccountLayout active="orders"><div className="page-heading"><p>交易中心</p><h1>我的订单</h1></div>{params.get('created') && <Notice message={`订单 ${params.get('created')} 已支付成功`} />}<div className="order-list">{orders.map((order) => <article id={`order-${order.order_no}`} className="order" key={order.id} data-testid={`order-${order.order_no}`}><div><span>{order.order_no}</span><h3>{order.status}</h3></div><strong>{money(order.total)}</strong><small>{new Date(order.created_at).toLocaleString('zh-CN')}</small></article>)}</div></AccountLayout>;
+}
+
+function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
+  const refreshUser = async () => { try { const result = await api<{ user: User | null }>('/auth/me'); setUser(result.user); } finally { setAuthReady(true); } };
+  const refreshCart = async () => { try { const result = await api<{ items: CartItem[] }>('/cart'); setCartCount(result.items.reduce((sum, item) => sum + item.quantity, 0)); } catch { setCartCount(0); } };
+  useEffect(() => { refreshUser(); }, []);
+  useEffect(() => { refreshCart(); }, [user?.id]);
+  return <Context.Provider value={{ user, authReady, refreshUser, cartCount, refreshCart }}><Layout><Routes><Route path="/" element={<Home />} /><Route path="/login" element={<Auth mode="login" />} /><Route path="/register" element={<Auth mode="register" />} /><Route path="/products" element={<Products />} /><Route path="/products/:id" element={<ProductDetail />} /><Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} /><Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} /><Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} /><Route path="/account/addresses" element={<RequireAuth><AddressPage /></RequireAuth>} /></Routes></Layout></Context.Provider>;
+}
+
+createRoot(document.getElementById('root')!).render(<StrictMode><BrowserRouter><App /></BrowserRouter></StrictMode>);

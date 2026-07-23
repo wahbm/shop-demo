@@ -16,7 +16,10 @@
 - Every element that exposes `data-testid` now also has an identical `id`, including dynamic product, cart, address, and order selectors.
 - Every `input` has a semantic `name` attribute; the search label now targets `search-input` to match its stable selector.
 - Existing `data-testid` values were preserved, so current Playwright selectors remain compatible while browser automation can also use `id` or `name`.
-- Validation completed: `pnpm exec tsc --noEmit`, `pnpm build`, and `pnpm test` (4 Playwright tests passed).
+- The top navigation now exposes **我的订单** and **地址簿** through the hover/focus **账户中心** secondary menu. Authenticated users see their phone number and a separate logout button.
+- The address book is a table-based management page with create, read, update, delete, and default-address actions. `PATCH /api/addresses/:id` validates address updates; deleting the default address promotes a remaining address when available.
+- Protected routes wait for `/api/auth/me` to resolve before redirecting, so a direct visit to an authenticated account page no longer flashes to the login page.
+- Validation completed: `pnpm exec tsc --noEmit`, `pnpm build`, and `pnpm test` (5 Playwright tests passed, including account-menu and address CRUD coverage).
 
 ## Commands
 

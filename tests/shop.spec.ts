@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 
 const demoUser = { phone: '13800000000', password: 'Demo1234' };
 
+test.describe.configure({ mode: 'serial' });
+
 async function login(page: import('@playwright/test').Page) {
   await page.goto('/login');
   await page.getByTestId('phone-input').fill(demoUser.phone);
@@ -46,4 +48,29 @@ test('搜索、加购、添加地址、结算和查单', async ({ page }) => {
 test('未登录购物车被拦截', async ({ page }) => {
   await page.goto('/cart');
   await expect(page).toHaveURL('/login');
+});
+
+test('账户二级菜单和地址簿支持新增、编辑与删除', async ({ page }) => {
+  await login(page);
+  await expect(page.getByTestId('user-phone')).toHaveText(demoUser.phone);
+  await page.getByTestId('account-menu').hover();
+  await expect(page.getByTestId('account-menu-orders')).toBeVisible();
+  await expect(page.getByTestId('account-menu-addresses')).toBeVisible();
+  await page.getByTestId('account-menu-addresses').click();
+  await expect(page).toHaveURL('/account/addresses');
+
+  await page.getByTestId('new-address-button').click();
+  await page.getByTestId('address-recipient').fill('地址簿测试用户');
+  await page.getByTestId('address-phone').fill('13700000000');
+  await page.getByTestId('address-detail').fill('杭州市西湖区测试路 88 号');
+  await page.getByTestId('save-address').click();
+
+  const row = page.locator('[data-testid^="address-row-"]').filter({ hasText: '地址簿测试用户' });
+  await expect(row).toContainText('杭州市西湖区测试路 88 号');
+  await row.getByRole('button', { name: '编辑' }).click();
+  await page.getByTestId('address-detail').fill('杭州市西湖区更新路 99 号');
+  await page.getByTestId('save-address').click();
+  await expect(row).toContainText('杭州市西湖区更新路 99 号');
+  await row.getByRole('button', { name: '删除' }).click();
+  await expect(row).toHaveCount(0);
 });

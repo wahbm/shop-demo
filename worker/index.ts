@@ -104,7 +104,30 @@ app.post('/api/addresses', async (c) => {
   const id = Number(results[results.length - 1].meta.last_row_id);
   return c.json({ address: await c.env.DB.prepare('SELECT * FROM addresses WHERE id = ?').bind(id).first() });
 });
-app.delete('/api/addresses/:id', async (c) => { const user = await requireUser(c); if (!user) return unauthorized(c); await c.env.DB.prepare('DELETE FROM addresses WHERE id = ? AND user_id = ?').bind(Number(c.req.param('id')), user.id).run(); return c.json({ ok: true }); });
+app.patch('/api/addresses/:id', async (c) => {
+  const user = await requireUser(c); if (!user) return unauthorized(c);
+  const id = Number(c.req.param('id'));
+  const existing = await c.env.DB.prepare('SELECT * FROM addresses WHERE id = ? AND user_id = ?').bind(id, user.id).first<any>();
+  if (!existing) return c.json({ message: '收货地址不存在' }, 404);
+  const { recipient, phone, detail, isDefault = false } = await c.req.json<any>();
+  if (!recipient?.trim() || !/^1\d{10}$/.test(phone || '') || !detail?.trim()) return c.json({ message: '请完整填写收货人、手机号和详细地址' }, 400);
+  const statements = isDefault ? [c.env.DB.prepare('UPDATE addresses SET is_default = 0 WHERE user_id = ?').bind(user.id)] : [];
+  statements.push(c.env.DB.prepare('UPDATE addresses SET recipient = ?, phone = ?, detail = ?, is_default = ? WHERE id = ? AND user_id = ?').bind(recipient.trim(), phone, detail.trim(), isDefault ? 1 : 0, id, user.id));
+  await c.env.DB.batch(statements);
+  return c.json({ address: await c.env.DB.prepare('SELECT * FROM addresses WHERE id = ?').bind(id).first() });
+});
+app.delete('/api/addresses/:id', async (c) => {
+  const user = await requireUser(c); if (!user) return unauthorized(c);
+  const id = Number(c.req.param('id'));
+  const address = await c.env.DB.prepare('SELECT * FROM addresses WHERE id = ? AND user_id = ?').bind(id, user.id).first<{ is_default: number }>();
+  if (!address) return c.json({ message: '收货地址不存在' }, 404);
+  await c.env.DB.prepare('DELETE FROM addresses WHERE id = ? AND user_id = ?').bind(id, user.id).run();
+  if (address.is_default) {
+    const replacement = await c.env.DB.prepare('SELECT id FROM addresses WHERE user_id = ? ORDER BY id DESC LIMIT 1').bind(user.id).first<{ id: number }>();
+    if (replacement) await c.env.DB.prepare('UPDATE addresses SET is_default = 1 WHERE id = ?').bind(replacement.id).run();
+  }
+  return c.json({ ok: true });
+});
 
 app.post('/api/checkout', async (c) => {
   const user = await requireUser(c); if (!user) return unauthorized(c);
