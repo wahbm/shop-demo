@@ -1,0 +1,38 @@
+{
+  "name": "stable-shop-demo",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "predev": "pnpm build",
+    "dev": "concurrently -k \"pnpm dev:api\" \"pnpm dev:web\"",
+    "dev:api": "wrangler dev --local --ip 127.0.0.1 --port 8787",
+    "dev:web": "vite",
+    "build": "vite build",
+    "db:reset": "tsx scripts/reset-local-d1.ts",
+    "cf:db:create": "wrangler d1 create stable-shop-demo",
+    "cf:db:migrate": "wrangler d1 migrations apply stable-shop-demo --remote",
+    "cf:deploy": "pnpm build && wrangler deploy",
+    "test": "pnpm db:reset && playwright test",
+    "test:ui": "playwright test --ui"
+  },
+  "dependencies": {
+    "hono": "^4.7.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.1.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.1",
+    "@cloudflare/workers-types": "^5.20260721.1",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "wrangler": "^4.35.0"
+  }
+}
