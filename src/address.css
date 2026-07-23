@@ -1,0 +1,27 @@
+.region-selects {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.region-selects select {
+  width: 100%;
+  margin-top: 6px;
+  border: 1px solid #cfd6cd;
+  border-radius: 7px;
+  padding: 10px;
+  font: inherit;
+  background: #fff;
+}
+
+.region-selects select:disabled {
+  background: #f1f4ef;
+  color: #98a099;
+  cursor: not-allowed;
+}
+
+@media (max-width: 560px) {
+  .region-selects {
+    grid-template-columns: 1fr;
+  }
+}

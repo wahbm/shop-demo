@@ -3,13 +3,52 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Address, api, CartItem, money, Product, User } from './api';
 import './styles.css';
+import './address.css';
 
 type AppContext = { user: User | null; authReady: boolean; refreshUser: () => Promise<void>; cartCount: number; refreshCart: () => Promise<void> };
-type AddressFormState = { recipient: string; phone: string; detail: string; isDefault: boolean };
+type Region = { name: string; cities: { name: string; districts: string[] }[] };
+type AddressFormState = { recipient: string; phone: string; province: string; city: string; district: string; detail: string; isDefault: boolean };
+
+const regions: Region[] = [
+  { name: '北京市', cities: [{ name: '北京市', districts: ['东城区', '西城区', '朝阳区', '海淀区', '丰台区', '通州区', '昌平区'] }] },
+  { name: '天津市', cities: [{ name: '天津市', districts: ['和平区', '河东区', '河西区', '南开区', '河北区', '滨海新区'] }] },
+  { name: '河北省', cities: [{ name: '石家庄市', districts: ['长安区', '桥西区', '新华区', '裕华区'] }, { name: '唐山市', districts: ['路南区', '路北区', '丰润区'] }, { name: '保定市', districts: ['竞秀区', '莲池区', '满城区'] }] },
+  { name: '山西省', cities: [{ name: '太原市', districts: ['小店区', '迎泽区', '杏花岭区', '万柏林区'] }, { name: '大同市', districts: ['平城区', '云冈区'] }] },
+  { name: '内蒙古自治区', cities: [{ name: '呼和浩特市', districts: ['新城区', '回民区', '玉泉区', '赛罕区'] }, { name: '包头市', districts: ['昆都仑区', '青山区', '东河区'] }] },
+  { name: '辽宁省', cities: [{ name: '沈阳市', districts: ['和平区', '沈河区', '皇姑区', '铁西区'] }, { name: '大连市', districts: ['中山区', '西岗区', '沙河口区', '甘井子区'] }] },
+  { name: '吉林省', cities: [{ name: '长春市', districts: ['南关区', '宽城区', '朝阳区', '绿园区'] }, { name: '吉林市', districts: ['船营区', '昌邑区', '龙潭区'] }] },
+  { name: '黑龙江省', cities: [{ name: '哈尔滨市', districts: ['道里区', '南岗区', '道外区', '香坊区'] }, { name: '齐齐哈尔市', districts: ['龙沙区', '建华区', '铁锋区'] }] },
+  { name: '上海市', cities: [{ name: '上海市', districts: ['黄浦区', '徐汇区', '长宁区', '静安区', '普陀区', '虹口区', '杨浦区', '闵行区', '浦东新区'] }] },
+  { name: '江苏省', cities: [{ name: '南京市', districts: ['玄武区', '秦淮区', '建邺区', '鼓楼区', '栖霞区'] }, { name: '苏州市', districts: ['姑苏区', '虎丘区', '吴中区', '相城区'] }, { name: '无锡市', districts: ['梁溪区', '滨湖区', '新吴区'] }] },
+  { name: '浙江省', cities: [{ name: '杭州市', districts: ['上城区', '拱墅区', '西湖区', '滨江区', '余杭区'] }, { name: '宁波市', districts: ['海曙区', '江北区', '鄞州区'] }, { name: '温州市', districts: ['鹿城区', '龙湾区', '瓯海区'] }] },
+  { name: '安徽省', cities: [{ name: '合肥市', districts: ['瑶海区', '庐阳区', '蜀山区', '包河区'] }, { name: '芜湖市', districts: ['镜湖区', '弋江区', '鸠江区'] }] },
+  { name: '福建省', cities: [{ name: '福州市', districts: ['鼓楼区', '台江区', '仓山区', '晋安区'] }, { name: '厦门市', districts: ['思明区', '湖里区', '集美区', '海沧区'] }] },
+  { name: '江西省', cities: [{ name: '南昌市', districts: ['东湖区', '西湖区', '青云谱区', '青山湖区'] }, { name: '赣州市', districts: ['章贡区', '南康区'] }] },
+  { name: '山东省', cities: [{ name: '济南市', districts: ['历下区', '市中区', '槐荫区', '历城区'] }, { name: '青岛市', districts: ['市南区', '市北区', '黄岛区', '崂山区'] }] },
+  { name: '河南省', cities: [{ name: '郑州市', districts: ['中原区', '二七区', '金水区', '管城回族区'] }, { name: '洛阳市', districts: ['老城区', '西工区', '涧西区'] }] },
+  { name: '湖北省', cities: [{ name: '武汉市', districts: ['江岸区', '江汉区', '硚口区', '武昌区', '洪山区'] }, { name: '宜昌市', districts: ['西陵区', '伍家岗区', '点军区'] }] },
+  { name: '湖南省', cities: [{ name: '长沙市', districts: ['芙蓉区', '天心区', '岳麓区', '开福区', '雨花区'] }, { name: '株洲市', districts: ['荷塘区', '芦淞区', '石峰区'] }] },
+  { name: '广东省', cities: [{ name: '广州市', districts: ['越秀区', '海珠区', '天河区', '白云区', '番禺区'] }, { name: '深圳市', districts: ['罗湖区', '福田区', '南山区', '宝安区', '龙岗区'] }, { name: '佛山市', districts: ['禅城区', '南海区', '顺德区'] }] },
+  { name: '广西壮族自治区', cities: [{ name: '南宁市', districts: ['兴宁区', '青秀区', '江南区', '西乡塘区'] }, { name: '桂林市', districts: ['秀峰区', '叠彩区', '象山区'] }] },
+  { name: '海南省', cities: [{ name: '海口市', districts: ['秀英区', '龙华区', '琼山区', '美兰区'] }, { name: '三亚市', districts: ['吉阳区', '天涯区', '崖州区'] }] },
+  { name: '重庆市', cities: [{ name: '重庆市', districts: ['渝中区', '江北区', '沙坪坝区', '九龙坡区', '南岸区', '渝北区'] }] },
+  { name: '四川省', cities: [{ name: '成都市', districts: ['锦江区', '青羊区', '金牛区', '武侯区', '成华区'] }, { name: '绵阳市', districts: ['涪城区', '游仙区'] }] },
+  { name: '贵州省', cities: [{ name: '贵阳市', districts: ['南明区', '云岩区', '花溪区', '观山湖区'] }, { name: '遵义市', districts: ['红花岗区', '汇川区'] }] },
+  { name: '云南省', cities: [{ name: '昆明市', districts: ['五华区', '盘龙区', '官渡区', '西山区'] }, { name: '大理白族自治州', districts: ['大理市'] }] },
+  { name: '西藏自治区', cities: [{ name: '拉萨市', districts: ['城关区', '堆龙德庆区'] }] },
+  { name: '陕西省', cities: [{ name: '西安市', districts: ['新城区', '碑林区', '莲湖区', '雁塔区', '未央区'] }, { name: '咸阳市', districts: ['秦都区', '渭城区'] }] },
+  { name: '甘肃省', cities: [{ name: '兰州市', districts: ['城关区', '七里河区', '西固区', '安宁区'] }, { name: '天水市', districts: ['秦州区', '麦积区'] }] },
+  { name: '青海省', cities: [{ name: '西宁市', districts: ['城东区', '城中区', '城西区', '城北区'] }] },
+  { name: '宁夏回族自治区', cities: [{ name: '银川市', districts: ['兴庆区', '西夏区', '金凤区'] }] },
+  { name: '新疆维吾尔自治区', cities: [{ name: '乌鲁木齐市', districts: ['天山区', '沙依巴克区', '新市区', '水磨沟区'] }, { name: '喀什地区', districts: ['喀什市'] }] },
+  { name: '台湾省', cities: [{ name: '台北市', districts: ['中正区', '大安区', '信义区'] }] },
+  { name: '香港特别行政区', cities: [{ name: '香港特别行政区', districts: ['中西区', '湾仔区', '九龙城区', '沙田区'] }] },
+  { name: '澳门特别行政区', cities: [{ name: '澳门特别行政区', districts: ['花地玛堂区', '大堂区', '风顺堂区'] }] },
+];
 
 const Context = createContext<AppContext>(null!);
 const useApp = () => useContext(Context);
-const emptyAddressForm = (): AddressFormState => ({ recipient: '', phone: '', detail: '', isDefault: true });
+const emptyAddressForm = (): AddressFormState => ({ recipient: '', phone: '', province: '', city: '', district: '', detail: '', isDefault: true });
 
 function Notice({ message }: { message: string }) { return <p className="notice" role="alert">{message}</p>; }
 
@@ -97,8 +136,22 @@ function Cart() {
   return <section><div className="page-heading"><p>购物车</p><h1>准备结算的好物</h1></div>{message && <Notice message={message} />}{!items.length ? <div id="empty-cart" className="empty" data-testid="empty-cart">购物车还是空的。<Link to="/products">去逛逛</Link></div> : <><div className="cart-list">{items.map((item) => <article id={`cart-item-${item.productId}`} className="cart-item" key={item.productId} data-testid={`cart-item-${item.productId}`}><span className="cart-emoji">{item.emoji}</span><div><h3>{item.name}</h3><strong>{money(item.price)}</strong></div><label>数量<input id={`cart-quantity-${item.productId}`} name={`cart-quantity-${item.productId}`} data-testid={`cart-quantity-${item.productId}`} type="number" min="1" max={item.stock} value={item.quantity} onChange={(event) => update(item, Number(event.target.value))} /></label><button className="text-danger" onClick={() => remove(item.productId)}>删除</button></article>)}</div><div className="total-bar"><span>合计 <b id="cart-total" data-testid="cart-total">{money(total)}</b></span><button id="checkout-button" className="primary" data-testid="checkout-button" onClick={() => navigate('/checkout')}>去结算</button></div></>}</section>;
 }
 
+function addressPayload(form: AddressFormState) {
+  return { ...form, detail: [form.province, form.city, form.district, form.detail.trim()].join(' ') };
+}
+
+function addressFormFromAddress(address: Address): AddressFormState {
+  const province = regions.find((region) => address.detail.startsWith(region.name));
+  const city = province?.cities.find((item) => address.detail.startsWith(`${province.name} ${item.name}`));
+  const district = city?.districts.find((item) => address.detail.startsWith(`${province!.name} ${city.name} ${item}`));
+  const prefix = province && city && district ? `${province.name} ${city.name} ${district}` : '';
+  return { recipient: address.recipient, phone: address.phone, province: province?.name || '', city: city?.name || '', district: district || '', detail: prefix ? address.detail.slice(prefix.length).trim() : address.detail, isDefault: Boolean(address.is_default) };
+}
+
 function AddressFields({ form, setForm }: { form: AddressFormState; setForm: React.Dispatch<React.SetStateAction<AddressFormState>> }) {
-  return <><label>收货人<input id="address-recipient" name="recipient" data-testid="address-recipient" value={form.recipient} onChange={(event) => setForm({ ...form, recipient: event.target.value })} /></label><label>手机号码<input id="address-phone" name="phone" data-testid="address-phone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label><label>详细地址<textarea id="address-detail" name="detail" data-testid="address-detail" value={form.detail} onChange={(event) => setForm({ ...form, detail: event.target.value })} /></label><label className="checkbox"><input name="isDefault" type="checkbox" checked={form.isDefault} onChange={(event) => setForm({ ...form, isDefault: event.target.checked })} />设为默认地址</label></>;
+  const cities = regions.find((region) => region.name === form.province)?.cities || [];
+  const districts = cities.find((city) => city.name === form.city)?.districts || [];
+  return <><label>收货人<input id="address-recipient" name="recipient" data-testid="address-recipient" value={form.recipient} onChange={(event) => setForm({ ...form, recipient: event.target.value })} /></label><label>手机号码<input id="address-phone" name="phone" data-testid="address-phone" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label><label>收货地区<div className="region-selects"><select id="address-province" name="province" data-testid="address-province" aria-label="省份" required value={form.province} onChange={(event) => setForm({ ...form, province: event.target.value, city: '', district: '' })}><option value="" disabled>请选择省份</option>{regions.map((region) => <option key={region.name} value={region.name}>{region.name}</option>)}</select><select id="address-city" name="city" data-testid="address-city" aria-label="城市" required disabled={!form.province} value={form.city} onChange={(event) => setForm({ ...form, city: event.target.value, district: '' })}><option value="" disabled>请选择城市</option>{cities.map((city) => <option key={city.name} value={city.name}>{city.name}</option>)}</select><select id="address-district" name="district" data-testid="address-district" aria-label="区县" required disabled={!form.city} value={form.district} onChange={(event) => setForm({ ...form, district: event.target.value })}><option value="" disabled>请选择区县</option>{districts.map((district) => <option key={district} value={district}>{district}</option>)}</select></div></label><label>详细地址<textarea id="address-detail" name="detail" data-testid="address-detail" placeholder="街道、门牌号、楼栋和房间号" value={form.detail} onChange={(event) => setForm({ ...form, detail: event.target.value })} /></label><label className="checkbox"><input name="isDefault" type="checkbox" checked={form.isDefault} onChange={(event) => setForm({ ...form, isDefault: event.target.checked })} />设为默认地址</label></>;
 }
 
 function AddressPicker({ onSelect }: { onSelect: (id: number) => void }) {
@@ -107,7 +160,7 @@ function AddressPicker({ onSelect }: { onSelect: (id: number) => void }) {
   const [error, setError] = useState('');
   const load = () => api<{ addresses: Address[] }>('/addresses').then((result) => setAddresses(result.addresses));
   useEffect(() => { load(); }, []);
-  const save = async (event: React.FormEvent) => { event.preventDefault(); try { await api('/addresses', { method: 'POST', body: JSON.stringify(form) }); setForm(emptyAddressForm()); setError(''); await load(); } catch (err: any) { setError(err.message); } };
+  const save = async (event: React.FormEvent) => { event.preventDefault(); try { await api('/addresses', { method: 'POST', body: JSON.stringify(addressPayload(form)) }); setForm(emptyAddressForm()); setError(''); await load(); } catch (err: any) { setError(err.message); } };
   return <div className="addresses"><div className="address-list">{addresses.map((address) => <button key={address.id} id={`address-${address.id}`} data-testid={`address-${address.id}`} className="address selectable" onClick={() => onSelect(address.id)}><b>{address.recipient} · {address.phone}</b><span>{address.detail}</span>{address.is_default ? <small>默认地址</small> : null}</button>)} {!addresses.length && <div className="empty">还没有地址，请先新增。</div>}</div><form className="address-form" onSubmit={save}><h2>新增收货地址</h2><AddressFields form={form} setForm={setForm} />{error && <Notice message={error} />}<button id="add-address" data-testid="add-address" className="primary">保存地址</button></form></div>;
 }
 
@@ -124,8 +177,8 @@ function AddressPage() {
   const load = () => api<{ addresses: Address[] }>('/addresses').then((result) => setAddresses(result.addresses));
   useEffect(() => { load(); }, []);
   const openCreate = () => { setEditingId(null); setForm(emptyAddressForm()); setError(''); setEditorOpen(true); };
-  const openEdit = (address: Address) => { setEditingId(address.id); setForm({ recipient: address.recipient, phone: address.phone, detail: address.detail, isDefault: Boolean(address.is_default) }); setError(''); setEditorOpen(true); };
-  const save = async (event: React.FormEvent) => { event.preventDefault(); try { await api(editingId ? `/addresses/${editingId}` : '/addresses', { method: editingId ? 'PATCH' : 'POST', body: JSON.stringify(form) }); await load(); setEditorOpen(false); setEditingId(null); setForm(emptyAddressForm()); } catch (err: any) { setError(err.message); } };
+  const openEdit = (address: Address) => { setEditingId(address.id); setForm(addressFormFromAddress(address)); setError(''); setEditorOpen(true); };
+  const save = async (event: React.FormEvent) => { event.preventDefault(); try { await api(editingId ? `/addresses/${editingId}` : '/addresses', { method: editingId ? 'PATCH' : 'POST', body: JSON.stringify(addressPayload(form)) }); await load(); setEditorOpen(false); setEditingId(null); setForm(emptyAddressForm()); } catch (err: any) { setError(err.message); } };
   const remove = async (id: number) => { try { await api(`/addresses/${id}`, { method: 'DELETE' }); await load(); } catch (err: any) { setError(err.message); } };
   const makeDefault = async (address: Address) => { try { await api(`/addresses/${address.id}`, { method: 'PATCH', body: JSON.stringify({ ...address, isDefault: true }) }); await load(); } catch (err: any) { setError(err.message); } };
   return <AccountLayout active="addresses"><div className="account-heading"><div><p>账户设置</p><h1>地址管理</h1></div><button id="new-address-button" data-testid="new-address-button" className="text-link" onClick={openCreate}>添加新地址</button></div>{error && <Notice message={error} />}<div className="address-table-wrap"><table className="address-table"><thead><tr><th>收货人</th><th>收货地址</th><th>联系电话</th><th>操作</th></tr></thead><tbody>{addresses.map((address) => <tr key={address.id} id={`address-row-${address.id}`} data-testid={`address-row-${address.id}`}><td>{address.recipient}{address.is_default ? <small className="default-badge">默认</small> : null}</td><td>{address.detail}</td><td>{address.phone}</td><td className="address-actions"><button id={`edit-address-${address.id}`} data-testid={`edit-address-${address.id}`} onClick={() => openEdit(address)}>编辑</button>{!address.is_default && <button id={`set-default-address-${address.id}`} data-testid={`set-default-address-${address.id}`} onClick={() => makeDefault(address)}>设为默认</button>}<button id={`delete-address-${address.id}`} data-testid={`delete-address-${address.id}`} className="text-danger" onClick={() => remove(address.id)}>删除</button></td></tr>)}</tbody></table>{!addresses.length && <div className="empty">还没有地址，点击右上角添加新地址。</div>}<p className="address-count">已保存 <b>{addresses.length}</b> 条地址。</p></div>{editorOpen && <form className="address-editor" onSubmit={save}><div className="editor-heading"><h2>{editingId ? '编辑收货地址' : '新增收货地址'}</h2><button id="cancel-address-edit" type="button" onClick={() => setEditorOpen(false)}>取消</button></div><AddressFields form={form} setForm={setForm} /><button id="save-address" data-testid="save-address" className="primary">{editingId ? '保存修改' : '保存地址'}</button></form>}</AccountLayout>;

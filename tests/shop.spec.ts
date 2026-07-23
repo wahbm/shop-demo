@@ -36,7 +36,10 @@ test('搜索、加购、添加地址、结算和查单', async ({ page }) => {
   await page.getByTestId('checkout-button').click();
   await page.getByTestId('address-recipient').fill('自动化测试用户');
   await page.getByTestId('address-phone').fill('13900000000');
-  await page.getByTestId('address-detail').fill('北京市海淀区测试大道 100 号');
+  await page.getByTestId('address-province').selectOption('北京市');
+  await page.getByTestId('address-city').selectOption('北京市');
+  await page.getByTestId('address-district').selectOption('海淀区');
+  await page.getByTestId('address-detail').fill('测试大道 100 号');
   await page.getByTestId('add-address').click();
   await page.getByTestId('address-2').click();
   await page.getByTestId('pay-button').click();
@@ -62,15 +65,18 @@ test('账户二级菜单和地址簿支持新增、编辑与删除', async ({ pa
   await page.getByTestId('new-address-button').click();
   await page.getByTestId('address-recipient').fill('地址簿测试用户');
   await page.getByTestId('address-phone').fill('13700000000');
-  await page.getByTestId('address-detail').fill('杭州市西湖区测试路 88 号');
+  await page.getByTestId('address-province').selectOption('浙江省');
+  await page.getByTestId('address-city').selectOption('杭州市');
+  await page.getByTestId('address-district').selectOption('西湖区');
+  await page.getByTestId('address-detail').fill('测试路 88 号');
   await page.getByTestId('save-address').click();
 
   const row = page.locator('[data-testid^="address-row-"]').filter({ hasText: '地址簿测试用户' });
-  await expect(row).toContainText('杭州市西湖区测试路 88 号');
+  await expect(row).toContainText('浙江省 杭州市 西湖区 测试路 88 号');
   await row.getByRole('button', { name: '编辑' }).click();
-  await page.getByTestId('address-detail').fill('杭州市西湖区更新路 99 号');
+  await page.getByTestId('address-detail').fill('更新路 99 号');
   await page.getByTestId('save-address').click();
-  await expect(row).toContainText('杭州市西湖区更新路 99 号');
+  await expect(row).toContainText('浙江省 杭州市 西湖区 更新路 99 号');
   await row.getByRole('button', { name: '删除' }).click();
   await expect(row).toHaveCount(0);
 });
