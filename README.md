@@ -59,7 +59,7 @@ pnpm exec playwright install chromium
 - 购物车和结算：`cart-link`、`cart-item-{productId}`、`cart-quantity-{productId}`、`checkout-button`、`address-{id}`、`pay-button`
 - 订单：`order-{orderNo}`
 - 管理后台登录：`admin-phone-input`、`admin-password-input`、`admin-captcha-input`、`admin-login-submit`
-- 管理后台商品：`admin-products-nav`、`admin-product-search`、`admin-add-product`、`admin-product-row-{id}`、`admin-edit-product-{id}`、`admin-product-name`、`admin-product-category`、`admin-product-price`、`admin-product-stock`、`admin-product-emoji`、`admin-product-description`、`admin-save-product`
+- 管理后台商品：`admin-products-nav`、`admin-product-search`、`admin-add-product`、`admin-product-create-frame`、`admin-close-product-frame`、`admin-product-row-{id}`、`admin-edit-product-{id}`、`admin-product-name`、`admin-product-category`、`admin-product-price`、`admin-product-stock`、`admin-product-emoji`、`admin-product-description`、`admin-save-product`
 
 同时保留了清晰的中文按钮和标签，示例也演示了语义定位与 `data-testid` 的组合使用。
 

@@ -41,7 +41,7 @@ test('搜索、加购、添加地址、结算和查单', async ({ page }) => {
   await page.getByTestId('address-district').selectOption('海淀区');
   await page.getByTestId('address-detail').fill('测试大道 100 号');
   await page.getByTestId('add-address').click();
-  await page.getByTestId('address-2').click();
+  await page.getByRole('button', { name: /自动化测试用户/ }).click();
   await page.getByTestId('pay-button').click();
   await expect(page).toHaveURL(/orders\?created=SHOP-0002/);
   await expect(page.getByRole('alert')).toHaveText('订单 SHOP-0002 已支付成功');
