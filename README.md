@@ -26,6 +26,16 @@ pnpm db:reset
 
 演示账号为 `13800000000` / `Demo1234`，登录和注册页的固定验证码均为 `1234`。
 
+## 管理后台 Demo
+
+访问 `http://127.0.0.1:5173/admin` 可进入管理后台。它和商城共用同一个 Worker 和 D1 数据库，因此商品、库存和订单数据会即时同步。
+
+- 管理员账号：`13900000001` / `Admin1234`
+- 固定验证码：`1234`
+- 当前功能：管理员登录、营销数据统计、商品搜索筛选、新增/编辑商品、上下架与库存管理。
+
+管理后台使用独立的管理员会话和 `/api/admin/*` 接口；普通商城账号不能访问这些接口。
+
 ## 自动化示例
 
 ```bash
@@ -48,6 +58,8 @@ pnpm exec playwright install chromium
 - 搜索与商品：`search-input`、`search-submit`、`category-{id}`、`product-card-{id}`、`add-to-cart`
 - 购物车和结算：`cart-link`、`cart-item-{productId}`、`cart-quantity-{productId}`、`checkout-button`、`address-{id}`、`pay-button`
 - 订单：`order-{orderNo}`
+- 管理后台登录：`admin-phone-input`、`admin-password-input`、`admin-captcha-input`、`admin-login-submit`
+- 管理后台商品：`admin-products-nav`、`admin-product-search`、`admin-add-product`、`admin-product-row-{id}`、`admin-edit-product-{id}`、`admin-product-name`、`admin-product-category`、`admin-product-price`、`admin-product-stock`、`admin-product-emoji`、`admin-product-description`、`admin-save-product`
 
 同时保留了清晰的中文按钮和标签，示例也演示了语义定位与 `data-testid` 的组合使用。
 

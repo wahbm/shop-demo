@@ -2,6 +2,7 @@ import { StrictMode, createContext, useContext, useEffect, useState } from 'reac
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Address, api, CartItem, money, Product, User } from './api';
+import { AdminApp } from './admin';
 import './styles.css';
 import './address.css';
 
@@ -133,7 +134,7 @@ function Cart() {
   const update = async (item: CartItem, quantity: number) => { try { await api(`/cart/${item.productId}`, { method: 'PATCH', body: JSON.stringify({ quantity }) }); await load(); await refreshCart(); } catch (error: any) { setMessage(error.message); } };
   const remove = async (id: number) => { await api(`/cart/${id}`, { method: 'DELETE' }); await load(); await refreshCart(); };
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  return <section><div className="page-heading"><p>购物车</p><h1>准备结算的好物</h1></div>{message && <Notice message={message} />}{!items.length ? <div id="empty-cart" className="empty" data-testid="empty-cart">购物车还是空的。<Link to="/products">去逛逛</Link></div> : <><div className="cart-list">{items.map((item) => <article id={`cart-item-${item.productId}`} className="cart-item" key={item.productId} data-testid={`cart-item-${item.productId}`}><span className="cart-emoji">{item.emoji}</span><div><h3>{item.name}</h3><strong>{money(item.price)}</strong></div><label>数量<input id={`cart-quantity-${item.productId}`} name={`cart-quantity-${item.productId}`} data-testid={`cart-quantity-${item.productId}`} type="number" min="1" max={item.stock} value={item.quantity} onChange={(event) => update(item, Number(event.target.value))} /></label><button className="text-danger" onClick={() => remove(item.productId)}>删除</button></article>)}</div><div className="total-bar"><span>合计 <b id="cart-total" data-testid="cart-total">{money(total)}</b></span><button id="checkout-button" className="primary" data-testid="checkout-button" onClick={() => navigate('/checkout')}>去结算</button></div></>}</section>;
+  return <section><div className="page-heading"><p>购物车</p><h1>准备结算的好物</h1></div>{message && <Notice message={message} />}{!items.length ? <div id="empty-cart" className="empty" data-testid="empty-cart">购物车还是空的。<Link to="/products">去逛逛</Link></div> : <><div className="cart-list">{items.map((item) => <article id={`cart-item-${item.productId}`} className="cart-item" key={item.productId} data-testid={`cart-item-${item.productId}`}><span className="cart-emoji">{item.emoji}</span><div><h3>{item.name} {!item.is_active && <small className="cart-unavailable">已下架</small>}</h3><strong>{money(item.price)}</strong></div><label>数量<input id={`cart-quantity-${item.productId}`} name={`cart-quantity-${item.productId}`} data-testid={`cart-quantity-${item.productId}`} type="number" min="1" max={item.stock} value={item.quantity} disabled={!item.is_active} onChange={(event) => update(item, Number(event.target.value))} /></label><button className="text-danger" onClick={() => remove(item.productId)}>删除</button></article>)}</div><div className="total-bar"><span>合计 <b id="cart-total" data-testid="cart-total">{money(total)}</b></span><button id="checkout-button" className="primary" data-testid="checkout-button" onClick={() => navigate('/checkout')}>去结算</button></div></>}</section>;
 }
 
 function addressPayload(form: AddressFormState) {
@@ -210,4 +211,4 @@ function App() {
   return <Context.Provider value={{ user, authReady, refreshUser, cartCount, refreshCart }}><Layout><Routes><Route path="/" element={<Home />} /><Route path="/login" element={<Auth mode="login" />} /><Route path="/register" element={<Auth mode="register" />} /><Route path="/products" element={<Products />} /><Route path="/products/:id" element={<ProductDetail />} /><Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} /><Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} /><Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} /><Route path="/account/addresses" element={<RequireAuth><AddressPage /></RequireAuth>} /></Routes></Layout></Context.Provider>;
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode><BrowserRouter><App /></BrowserRouter></StrictMode>);
+createRoot(document.getElementById('root')!).render(<StrictMode>{window.location.pathname.startsWith('/admin') ? <AdminApp /> : <BrowserRouter><App /></BrowserRouter>}</StrictMode>);

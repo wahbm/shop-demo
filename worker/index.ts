@@ -3,8 +3,9 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 
 type Bindings = { DB: D1Database; ASSETS: Fetcher };
 type User = { id: number; phone: string; name: string };
-type Product = { id: number; category_id: number; categoryName: string; name: string; description: string; price: number; stock: number; emoji: string };
-type CartItem = { productId: number; quantity: number; name: string; price: number; stock: number; emoji: string };
+type Admin = User & { role: 'admin' };
+type Product = { id: number; category_id: number; categoryName: string; name: string; description: string; price: number; stock: number; emoji: string; is_active: number };
+type CartItem = { productId: number; quantity: number; name: string; price: number; stock: number; emoji: string; is_active: number };
 
 const app = new Hono<{ Bindings: Bindings }>();
 const CAPTCHA = '1234';
@@ -21,6 +22,17 @@ async function requireUser(c: AppContext): Promise<User | null> {
   return user;
 }
 const unauthorized = (c: AppContext) => c.json({ message: '请先登录后再继续' }, 401);
+async function currentAdmin(c: AppContext): Promise<Admin | null> {
+  const id = Number(getCookie(c, 'demo_admin_session'));
+  if (!id) return null;
+  return c.env.DB.prepare("SELECT id, phone, name, role FROM users WHERE id = ? AND role = 'admin'").bind(id).first<Admin>();
+}
+async function requireAdmin(c: AppContext): Promise<Admin | null> {
+  const admin = await currentAdmin(c);
+  if (!admin) c.status(401);
+  return admin;
+}
+const adminUnauthorized = (c: AppContext) => c.json({ message: '请使用管理员账号登录' }, 401);
 async function products(db: D1Database, where = '', params: unknown[] = []) {
   const result = await db.prepare(`SELECT p.*, c.name AS categoryName FROM products p JOIN categories c ON c.id = p.category_id ${where} ORDER BY p.id`).bind(...params).all<Product>();
   return result.results;
@@ -55,25 +67,90 @@ app.post('/api/auth/logout', (c) => { deleteCookie(c, 'demo_session', { path: '/
 app.get('/api/categories', async (c) => c.json({ categories: (await c.env.DB.prepare('SELECT * FROM categories ORDER BY id').all()).results }));
 app.get('/api/products', async (c) => {
   const q = c.req.query('q') || ''; const categoryId = c.req.query('categoryId');
-  const clauses: string[] = []; const params: unknown[] = [];
+  const clauses: string[] = ['p.is_active = 1']; const params: unknown[] = [];
   if (q) { clauses.push('(p.name LIKE ? OR p.description LIKE ?)'); params.push(`%${q}%`, `%${q}%`); }
   if (categoryId) { clauses.push('p.category_id = ?'); params.push(Number(categoryId)); }
   return c.json({ products: await products(c.env.DB, clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params) });
 });
 app.get('/api/products/:id', async (c) => {
-  const product = (await products(c.env.DB, 'WHERE p.id = ?', [Number(c.req.param('id'))]))[0];
+  const product = (await products(c.env.DB, 'WHERE p.id = ? AND p.is_active = 1', [Number(c.req.param('id'))]))[0];
   return product ? c.json(product) : c.json({ message: '商品不存在' }, 404);
+});
+
+app.get('/api/admin/auth/me', async (c) => c.json({ admin: await currentAdmin(c) }));
+app.post('/api/admin/auth/login', async (c) => {
+  const { phone, password, captcha } = await c.req.json<any>();
+  if (captcha !== CAPTCHA) return c.json({ message: '验证码不正确，请输入 1234' }, 400);
+  const admin = await c.env.DB.prepare("SELECT id, phone, name, role FROM users WHERE phone = ? AND password = ? AND role = 'admin'").bind(phone, password).first<Admin>();
+  if (!admin) return c.json({ message: '管理员账号或密码错误' }, 401);
+  setCookie(c, 'demo_admin_session', String(admin.id), { path: '/', httpOnly: true, sameSite: 'Lax' });
+  return c.json({ admin });
+});
+app.post('/api/admin/auth/logout', (c) => { deleteCookie(c, 'demo_admin_session', { path: '/' }); return c.json({ ok: true }); });
+
+app.get('/api/admin/dashboard', async (c) => {
+  const admin = await requireAdmin(c); if (!admin) return adminUnauthorized(c);
+  const [orders, productsCount, activeProducts, lowStock, customers, recentOrders] = await c.env.DB.batch([
+    c.env.DB.prepare("SELECT COUNT(*) AS count, COALESCE(SUM(total), 0) AS total FROM orders WHERE status = '已支付'"),
+    c.env.DB.prepare('SELECT COUNT(*) AS count FROM products'),
+    c.env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE is_active = 1'),
+    c.env.DB.prepare('SELECT COUNT(*) AS count FROM products WHERE stock <= 20'),
+    c.env.DB.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'customer'"),
+    c.env.DB.prepare('SELECT order_no, total, status, created_at FROM orders ORDER BY id DESC LIMIT 5'),
+  ]);
+  return c.json({
+    metrics: {
+      paidOrderCount: Number((orders.results[0] as any)?.count || 0), totalSales: Number((orders.results[0] as any)?.total || 0),
+      productCount: Number((productsCount.results[0] as any)?.count || 0), activeProductCount: Number((activeProducts.results[0] as any)?.count || 0),
+      lowStockCount: Number((lowStock.results[0] as any)?.count || 0), customerCount: Number((customers.results[0] as any)?.count || 0),
+    }, recentOrders: recentOrders.results,
+  });
+});
+app.get('/api/admin/products', async (c) => {
+  const admin = await requireAdmin(c); if (!admin) return adminUnauthorized(c);
+  const q = c.req.query('q') || ''; const categoryId = c.req.query('categoryId'); const status = c.req.query('status');
+  const clauses: string[] = []; const params: unknown[] = [];
+  if (q) { clauses.push('(p.name LIKE ? OR p.description LIKE ?)'); params.push(`%${q}%`, `%${q}%`); }
+  if (categoryId) { clauses.push('p.category_id = ?'); params.push(Number(categoryId)); }
+  if (status === 'active' || status === 'inactive') { clauses.push('p.is_active = ?'); params.push(status === 'active' ? 1 : 0); }
+  return c.json({ products: await products(c.env.DB, clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params) });
+});
+app.post('/api/admin/products', async (c) => {
+  const admin = await requireAdmin(c); if (!admin) return adminUnauthorized(c);
+  const { name, description, price, stock, emoji, categoryId, isActive = true } = await c.req.json<any>();
+  if (!name?.trim() || !description?.trim() || !emoji?.trim() || !Number.isFinite(Number(price)) || Number(price) < 0 || !Number.isInteger(Number(stock)) || Number(stock) < 0) return c.json({ message: '请完整填写商品信息，价格和库存不能为负数' }, 400);
+  const category = await c.env.DB.prepare('SELECT id FROM categories WHERE id = ?').bind(Number(categoryId)).first();
+  if (!category) return c.json({ message: '请选择有效的商品分类' }, 400);
+  const result = await c.env.DB.prepare('INSERT INTO products (category_id, name, description, price, stock, emoji, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(Number(categoryId), name.trim(), description.trim(), Number(price), Number(stock), emoji.trim(), isActive ? 1 : 0).run();
+  return c.json({ product: (await products(c.env.DB, 'WHERE p.id = ?', [Number(result.meta.last_row_id)]))[0] }, 201);
+});
+app.patch('/api/admin/products/:id', async (c) => {
+  const admin = await requireAdmin(c); if (!admin) return adminUnauthorized(c);
+  const id = Number(c.req.param('id')); const existing = await c.env.DB.prepare('SELECT id FROM products WHERE id = ?').bind(id).first();
+  if (!existing) return c.json({ message: '商品不存在' }, 404);
+  const { name, description, price, stock, emoji, categoryId, isActive } = await c.req.json<any>();
+  if (!name?.trim() || !description?.trim() || !emoji?.trim() || !Number.isFinite(Number(price)) || Number(price) < 0 || !Number.isInteger(Number(stock)) || Number(stock) < 0) return c.json({ message: '请完整填写商品信息，价格和库存不能为负数' }, 400);
+  const category = await c.env.DB.prepare('SELECT id FROM categories WHERE id = ?').bind(Number(categoryId)).first();
+  if (!category) return c.json({ message: '请选择有效的商品分类' }, 400);
+  await c.env.DB.prepare('UPDATE products SET category_id = ?, name = ?, description = ?, price = ?, stock = ?, emoji = ?, is_active = ? WHERE id = ?').bind(Number(categoryId), name.trim(), description.trim(), Number(price), Number(stock), emoji.trim(), isActive ? 1 : 0, id).run();
+  return c.json({ product: (await products(c.env.DB, 'WHERE p.id = ?', [id]))[0] });
+});
+app.patch('/api/admin/products/:id/status', async (c) => {
+  const admin = await requireAdmin(c); if (!admin) return adminUnauthorized(c);
+  const id = Number(c.req.param('id')); const isActive = Boolean((await c.req.json<any>()).isActive);
+  const result = await c.env.DB.prepare('UPDATE products SET is_active = ? WHERE id = ?').bind(isActive ? 1 : 0, id).run();
+  return result.meta.changes ? c.json({ ok: true }) : c.json({ message: '商品不存在' }, 404);
 });
 
 app.get('/api/cart', async (c) => {
   const user = await requireUser(c); if (!user) return unauthorized(c);
-  const result = await c.env.DB.prepare('SELECT ci.product_id AS productId, ci.quantity, p.name, p.price, p.stock, p.emoji FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.user_id = ? ORDER BY ci.product_id').bind(user.id).all<CartItem>();
+  const result = await c.env.DB.prepare('SELECT ci.product_id AS productId, ci.quantity, p.name, p.price, p.stock, p.emoji, p.is_active FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.user_id = ? ORDER BY ci.product_id').bind(user.id).all<CartItem>();
   return c.json({ items: result.results });
 });
 app.post('/api/cart', async (c) => {
   const user = await requireUser(c); if (!user) return unauthorized(c);
   const { productId, quantity = 1 } = await c.req.json<any>(); const amount = Number(quantity);
-  const product = await c.env.DB.prepare('SELECT id, stock FROM products WHERE id = ?').bind(Number(productId)).first<{ id: number; stock: number }>();
+  const product = await c.env.DB.prepare('SELECT id, stock FROM products WHERE id = ? AND is_active = 1').bind(Number(productId)).first<{ id: number; stock: number }>();
   if (!product) return c.json({ message: '商品不存在' }, 404);
   if (!Number.isInteger(amount) || amount < 1) return c.json({ message: '商品数量必须至少为 1' }, 400);
   const existing = await c.env.DB.prepare('SELECT quantity FROM cart_items WHERE user_id = ? AND product_id = ?').bind(user.id, product.id).first<{ quantity: number }>();
@@ -85,7 +162,7 @@ app.post('/api/cart', async (c) => {
 app.patch('/api/cart/:productId', async (c) => {
   const user = await requireUser(c); if (!user) return unauthorized(c);
   const quantity = Number((await c.req.json<any>()).quantity); const productId = Number(c.req.param('productId'));
-  const product = await c.env.DB.prepare('SELECT stock FROM products WHERE id = ?').bind(productId).first<{ stock: number }>();
+  const product = await c.env.DB.prepare('SELECT stock FROM products WHERE id = ? AND is_active = 1').bind(productId).first<{ stock: number }>();
   if (!product) return c.json({ message: '商品不存在' }, 404);
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > product.stock) return c.json({ message: '数量超出可购买范围' }, 400);
   const result = await c.env.DB.prepare('UPDATE cart_items SET quantity = ? WHERE user_id = ? AND product_id = ?').bind(quantity, user.id, productId).run();
@@ -134,9 +211,10 @@ app.post('/api/checkout', async (c) => {
   const { addressId } = await c.req.json<any>();
   const address = await c.env.DB.prepare('SELECT * FROM addresses WHERE id = ? AND user_id = ?').bind(Number(addressId), user.id).first<any>();
   if (!address) return c.json({ message: '请选择有效的收货地址' }, 400);
-  const itemResult = await c.env.DB.prepare('SELECT ci.product_id AS productId, ci.quantity, p.name, p.price, p.stock, p.emoji FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.user_id = ?').bind(user.id).all<CartItem>();
+  const itemResult = await c.env.DB.prepare('SELECT ci.product_id AS productId, ci.quantity, p.name, p.price, p.stock, p.emoji, p.is_active FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.user_id = ?').bind(user.id).all<CartItem>();
   const items = itemResult.results;
   if (!items.length) return c.json({ message: '购物车为空，无法结算' }, 400);
+  if (items.some((item) => !item.is_active)) return c.json({ message: '购物车中有已下架商品，请删除后再结算' }, 400);
   if (items.some((item) => item.quantity > item.stock)) return c.json({ message: '部分商品库存不足，请调整后重试' }, 400);
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const count = await c.env.DB.prepare('SELECT COUNT(*) AS count FROM orders').first<{ count: number }>();
