@@ -60,7 +60,7 @@ function AdminRouter() {
   useEffect(() => { api<{ admin: Admin | null }>('/admin/auth/me').then((result) => setAdmin(result.admin)).finally(() => setReady(true)); }, []);
   if (!ready) return <div className="admin-loading">正在验证管理员身份…</div>;
   const embedded = new URLSearchParams(window.location.search).get('embedded') === '1';
-  return admin ? (embedded ? <ProductCreatePage embedded /> : <AdminShell admin={admin} onLogout={() => setAdmin(null)} />) : <Routes><Route path="/admin/login" element={<AdminLogin onLogin={setAdmin} />} /><Route path="*" element={<Navigate to="/admin/login" replace />} /></Routes>;
+  return admin ? (embedded ? <ProductCreatePage embedded /> : <AdminShell admin={admin} onLogout={() => setAdmin(null)} />) : <Routes><Route path="/admin/login" element={<AdminLogin onLogin={setAdmin} />} /><Route path="*" element={<Navigate to={embedded ? '/admin/login?embedded=1' : '/admin/login'} replace />} /></Routes>;
 }
 
 export function AdminApp() { return <BrowserRouter><AdminRouter /></BrowserRouter>; }
