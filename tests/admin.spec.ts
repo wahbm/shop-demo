@@ -16,6 +16,7 @@ test('管理员可以登录、查看经营概览并管理商品', async ({ page 
   await page.getByTestId('admin-products-nav').click();
   await expect(page.getByRole('heading', { name: '商品管理' })).toBeVisible();
   await page.getByTestId('admin-add-product').click();
+  await expect(page.locator('.admin-modal-backdrop')).toBeVisible();
   const createFrame = page.frameLocator('[data-testid="admin-product-create-frame"]');
   await expect(createFrame.getByRole('heading', { name: '添加商品' })).toBeVisible();
   await createFrame.getByTestId('admin-product-name').fill('后台新增测试商品');
