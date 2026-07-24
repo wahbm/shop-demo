@@ -5,6 +5,9 @@ const admin = { phone: '13900000001', password: 'Admin1234' };
 test('管理员可以登录、查看经营概览并管理商品', async ({ page }) => {
   await page.goto('/admin');
   await expect(page).toHaveURL('/admin/login');
+  await expect(page.getByTestId('admin-phone-input')).toHaveValue('');
+  await expect(page.getByTestId('admin-password-input')).toHaveValue('');
+  await expect(page.getByTestId('admin-captcha-input')).toHaveValue('');
   await page.getByTestId('admin-phone-input').fill(admin.phone);
   await page.getByTestId('admin-password-input').fill(admin.password);
   await page.getByTestId('admin-captcha-input').fill('1234');
