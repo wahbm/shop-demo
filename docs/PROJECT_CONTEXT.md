@@ -6,7 +6,7 @@
 
 ## Current state
 
-- Repository: `mosshqq/shop-demo` (private), default branch `main`.
+- Repository: `pilaingliang-0920/shop-demo` (private), default branch `main`.
 - Production: `https://stable-shop-demo.wangpengyuanm.workers.dev`.
 - Automatic deploy: push to `main` runs `.github/workflows/deploy.yml`.
 - Completed: registration/login, catalog/category/search, product details, cart, address CRUD, simulated paid checkout, orders, API/UI Playwright coverage, D1 seed data, Worker deployment, and an administrator console.
