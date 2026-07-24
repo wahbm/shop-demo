@@ -5,7 +5,7 @@ type Bindings = { DB: D1Database; ASSETS: Fetcher };
 type User = { id: number; phone: string; name: string };
 type Admin = User & { role: 'admin' };
 type Product = { id: number; category_id: number; categoryName: string; name: string; description: string; price: number; stock: number; emoji: string; is_active: number };
-type CartItem = { productId: number; quantity: number; name: string; price: number; stock: number; emoji: string };
+type CartItem = { productId: number; quantity: number; name: string; price: number; stock: number; emoji: string; is_active: number };
 
 const app = new Hono<{ Bindings: Bindings }>();
 const CAPTCHA = '1234';
@@ -144,7 +144,7 @@ app.patch('/api/admin/products/:id/status', async (c) => {
 
 app.get('/api/cart', async (c) => {
   const user = await requireUser(c); if (!user) return unauthorized(c);
-  const result = await c.env.DB.prepare('SELECT ci.product_id AS productId, ci.quantity, p.name, p.price, p.stock, p.emoji FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.user_id = ? AND p.is_active = 1 ORDER BY ci.product_id').bind(user.id).all<CartItem>();
+  const result = await c.env.DB.prepare('SELECT ci.product_id AS productId, ci.quantity, p.name, p.price, p.stock, p.emoji, p.is_active FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.user_id = ? ORDER BY ci.product_id').bind(user.id).all<CartItem>();
   return c.json({ items: result.results });
 });
 app.post('/api/cart', async (c) => {
@@ -211,9 +211,10 @@ app.post('/api/checkout', async (c) => {
   const { addressId } = await c.req.json<any>();
   const address = await c.env.DB.prepare('SELECT * FROM addresses WHERE id = ? AND user_id = ?').bind(Number(addressId), user.id).first<any>();
   if (!address) return c.json({ message: '请选择有效的收货地址' }, 400);
-  const itemResult = await c.env.DB.prepare('SELECT ci.product_id AS productId, ci.quantity, p.name, p.price, p.stock, p.emoji FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.user_id = ? AND p.is_active = 1').bind(user.id).all<CartItem>();
+  const itemResult = await c.env.DB.prepare('SELECT ci.product_id AS productId, ci.quantity, p.name, p.price, p.stock, p.emoji, p.is_active FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.user_id = ?').bind(user.id).all<CartItem>();
   const items = itemResult.results;
   if (!items.length) return c.json({ message: '购物车为空，无法结算' }, 400);
+  if (items.some((item) => !item.is_active)) return c.json({ message: '购物车中有已下架商品，请删除后再结算' }, 400);
   if (items.some((item) => item.quantity > item.stock)) return c.json({ message: '部分商品库存不足，请调整后重试' }, 400);
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const count = await c.env.DB.prepare('SELECT COUNT(*) AS count FROM orders').first<{ count: number }>();

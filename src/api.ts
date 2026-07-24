@@ -1,6 +1,6 @@
 export type Product = { id: number; category_id: number; categoryName: string; name: string; description: string; price: number; stock: number; emoji: string; is_active: number };
 export type User = { id: number; phone: string; name: string };
-export type CartItem = { productId: number; quantity: number; name: string; price: number; stock: number; emoji: string };
+export type CartItem = { productId: number; quantity: number; name: string; price: number; stock: number; emoji: string; is_active: number };
 export type Address = { id: number; recipient: string; phone: string; detail: string; is_default: number };
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
