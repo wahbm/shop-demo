@@ -37,7 +37,7 @@ export class MysqlD1Database {
   readonly pool: Pool;
 
   constructor(databaseUrl: string) {
-    this.pool = mysql.createPool({ uri: databaseUrl, connectionLimit: 8, enableKeepAlive: true, charset: 'utf8mb4' });
+    this.pool = mysql.createPool({ uri: databaseUrl, connectionLimit: 8, enableKeepAlive: true, charset: 'utf8mb4', decimalNumbers: true });
   }
 
   prepare(query: string) {
