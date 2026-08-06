@@ -1,9 +1,13 @@
-name: Deploy to Cloudflare
+name: Deploy to Alibaba Cloud ECS
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: shop-demo-ecs-deployment
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -21,11 +25,20 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm cf:db:migrate
+      - run: pnpm build
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - run: pnpm cf:deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VITE_BASE_PATH: /ww/shop-demo/
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${{ vars.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+      - name: Upload application and static assets
+        run: |
+          rsync -az --delete --exclude .git --exclude .github --exclude node_modules --exclude dist ./ "${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}:${{ vars.DEPLOY_PATH }}/"
+          rsync -az --delete dist/ "${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}:${{ vars.DEPLOY_PATH }}/dist/"
+      - name: Restart API service
+        run: ssh "${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}" "cd '${{ vars.DEPLOY_PATH }}' && pnpm install --prod --frozen-lockfile && sudo systemctl restart shop-demo"
+      - name: Verify public health endpoint
+        run: curl --fail --retry 5 --retry-delay 3 "http://${{ vars.DEPLOY_HOST }}/ww/shop-demo/api/health"

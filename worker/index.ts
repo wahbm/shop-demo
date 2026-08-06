@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 
-type Bindings = { DB: D1Database; ASSETS: Fetcher };
+export type Bindings = { DB: D1Database; ASSETS: Fetcher };
 type User = { id: number; phone: string; name: string };
 type Admin = User & { role: 'admin' };
 type Product = { id: number; category_id: number; categoryName: string; name: string; description: string; price: number; stock: number; emoji: string; is_active: number };

@@ -211,4 +211,7 @@ function App() {
   return <Context.Provider value={{ user, authReady, refreshUser, cartCount, refreshCart }}><Layout><Routes><Route path="/" element={<Home />} /><Route path="/login" element={<Auth mode="login" />} /><Route path="/register" element={<Auth mode="register" />} /><Route path="/products" element={<Products />} /><Route path="/products/:id" element={<ProductDetail />} /><Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} /><Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} /><Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} /><Route path="/account/addresses" element={<RequireAuth><AddressPage /></RequireAuth>} /></Routes></Layout></Context.Provider>;
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode>{window.location.pathname.startsWith('/admin') ? <AdminApp /> : <BrowserRouter><App /></BrowserRouter>}</StrictMode>);
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+const appPath = window.location.pathname.slice(basePath.length) || '/';
+
+createRoot(document.getElementById('root')!).render(<StrictMode>{appPath.startsWith('/admin') ? <AdminApp /> : <BrowserRouter basename={import.meta.env.BASE_URL}><App /></BrowserRouter>}</StrictMode>);

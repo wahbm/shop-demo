@@ -1,0 +1,20 @@
+[Unit]
+Description=shop-demo API service
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/opt/ww/shop-demo
+Environment=NODE_ENV=production
+Environment=PORT=8788
+EnvironmentFile=/etc/shop-demo/shop-demo.env
+ExecStart=/usr/bin/env node --import tsx server/index.ts
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

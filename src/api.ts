@@ -4,7 +4,7 @@ export type CartItem = { productId: number; quantity: number; name: string; pric
 export type Address = { id: number; recipient: string; phone: string; detail: string; is_default: number };
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`/api${path}`, { credentials: 'include', headers: { 'content-type': 'application/json', ...(options.headers || {}) }, ...options });
+  const response = await fetch(`${import.meta.env.BASE_URL}api${path}`, { credentials: 'include', headers: { 'content-type': 'application/json', ...(options.headers || {}) }, ...options });
   const body = await response.json() as T & { message?: string };
   if (!response.ok) throw new Error(body.message || '请求失败，请稍后再试');
   return body;
