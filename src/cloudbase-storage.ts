@@ -168,7 +168,12 @@ export async function updatePublicFile(file: ProductCover, nextFile: File, metad
 }
 
 export async function removePublicFile(file: Pick<ProductCover, 'projectId' | 'scope' | 'path'>) {
-  const response = await fetch(proxyFileUrl(file), { method: 'DELETE' });
+  let response: Response;
+  try {
+    response = await fetch(proxyFileUrl(file), { method: 'DELETE' });
+  } catch (error) {
+    throw storageError(error, 'STORAGE_UNAVAILABLE');
+  }
   if (!response.ok) throw storageError(await response.text(), 'STORAGE_UNAVAILABLE');
 }
 
