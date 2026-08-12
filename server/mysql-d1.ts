@@ -31,6 +31,10 @@ export class MysqlStatement {
     const [result] = await executor.execute<ResultSetHeader>(this.query, this.values);
     return { meta: { changes: result.affectedRows, last_row_id: Number(result.insertId) } };
   }
+
+  async batchResult(executor: Executor): Promise<D1Result | { results: RowDataPacket[] }> {
+    return /^\s*SELECT\b/i.test(this.query) ? this.all(executor) : this.run(executor);
+  }
 }
 
 export class MysqlD1Database {
@@ -49,7 +53,7 @@ export class MysqlD1Database {
     try {
       await connection.beginTransaction();
       const results = [];
-      for (const statement of statements) results.push(await statement.run(connection));
+      for (const statement of statements) results.push(await statement.batchResult(connection));
       await connection.commit();
       return results;
     } catch (error) {
