@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { api, money, Product } from './api';
-import { getProductCoverUrl, ProductCover, uploadProductCover, validateProductCover } from './cloudbase-storage';
+import { getProductCoverUrl, ProductCover, productCoverFromStoredFields, removePublicFile, uploadProductCover, validateProductCover } from './cloudbase-storage';
 import { getErrorMessage } from './error-message';
 import './admin.css';
 import './admin-cover.css';
@@ -14,13 +14,13 @@ type ProductForm = { name: string; description: string; price: string; stock: st
 const emptyProduct: ProductForm = { name: '', description: '', price: '', stock: '0', emoji: '📦', categoryId: '', isActive: true, cover: null };
 
 function productCoverFromProduct(product: Product | null): ProductCover | null {
-  if (!product?.cover_bucket_id || !product.cover_path || !product.cover_original_name || !product.cover_mime_type || !product.cover_size_bytes) return null;
-  return { bucketId: product.cover_bucket_id, path: product.cover_path, originalName: product.cover_original_name, mimeType: product.cover_mime_type, sizeBytes: Number(product.cover_size_bytes), visibility: 'public' };
+  if (!product) return null;
+  return productCoverFromStoredFields({ bucketId: product.cover_bucket_id, path: product.cover_path, originalName: product.cover_original_name, mimeType: product.cover_mime_type, sizeBytes: product.cover_size_bytes });
 }
 
 function ProductCoverImage({ cover, alt, className, fallback }: { cover: ProductCover | null | undefined; alt: string; className: string; fallback: string }) {
   let url: string | null = null;
-  try { url = getProductCoverUrl(cover); } catch { /* A bad/missing CloudBase config should keep the emoji fallback usable. */ }
+  try { url = getProductCoverUrl(cover); } catch { /* A bad/missing proxy config should keep the emoji fallback usable. */ }
   return url ? <img className={className} src={url} alt={alt} /> : <span className={className}>{fallback}</span>;
 }
 
@@ -48,7 +48,19 @@ function ProductEditor({ product, categories, onClose, onSaved, embedded = false
   if (!product && !embedded) return <div className="admin-modal-backdrop" role="presentation"><section className="admin-iframe-modal"><header><div><p className="admin-eyebrow">PRODUCT</p><h2>添加商品</h2></div><button data-testid="admin-close-product-frame" className="admin-secondary" onClick={onClose}>返回商品列表</button></header><iframe data-testid="admin-product-create-frame" title="添加商品页面" src={`${import.meta.env.BASE_URL}admin/products/new?embedded=1`} /></section></div>;
   const chooseCover = (event: React.ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; if (!file) return; try { validateProductCover(file); setCoverError(''); setCoverFile(file); replaceCoverPreview(URL.createObjectURL(file)); } catch (err: any) { setCoverFile(null); setCoverError(err.message); replaceCoverPreview(''); event.target.value = ''; } };
   const removeCover = () => { setCoverFile(null); setForm({ ...form, cover: null }); setCoverError(''); replaceCoverPreview(''); if (coverInputRef.current) coverInputRef.current.value = ''; };
-  const save = async (event: React.FormEvent) => { event.preventDefault(); setSaving(true); setError(''); try { const cover = coverFile ? await uploadProductCover(coverFile) : form.cover; await api(product ? `/admin/products/${product.id}` : '/admin/products', { method: product ? 'PATCH' : 'POST', body: JSON.stringify({ ...form, cover, categoryId: Number(form.categoryId), price: Number(form.price), stock: Number(form.stock) }) }); onSaved(); } catch (err: any) { setError(getErrorMessage(err)); } finally { setSaving(false); } };
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault(); setSaving(true); setError('');
+    const previousCover = productCoverFromProduct(product); let uploadedCover: ProductCover | null = null; let cover: ProductCover | null = form.cover;
+    try {
+      if (coverFile) { uploadedCover = await uploadProductCover(coverFile); cover = uploadedCover; }
+      await api(product ? `/admin/products/${product.id}` : '/admin/products', { method: product ? 'PATCH' : 'POST', body: JSON.stringify({ ...form, cover, categoryId: Number(form.categoryId), price: Number(form.price), stock: Number(form.stock) }) });
+    } catch (err: any) {
+      if (uploadedCover) { try { await removePublicFile(uploadedCover); } catch { /* Keep the original save error visible if cleanup also fails. */ } }
+      setError(getErrorMessage(err)); setSaving(false); return;
+    }
+    if (previousCover && previousCover.path !== cover?.path) { try { await removePublicFile(previousCover); } catch { /* The product is saved; a later cleanup can remove this orphaned object. */ } }
+    onSaved(); setSaving(false);
+  };
   const formContent = <form className="admin-product-modal" onSubmit={save}><div className="admin-modal-heading"><div><p className="admin-eyebrow">PRODUCT</p><h2>{product ? '编辑商品' : '添加商品'}</h2></div><button type="button" aria-label="关闭" onClick={onClose}>×</button></div><div className="admin-form-grid"><label>商品名称<input data-testid="admin-product-name" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label>商品分类<select data-testid="admin-product-category" value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })}>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label><label>价格（元）<input data-testid="admin-product-price" required min="0" step="0.01" type="number" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /></label><label>库存（件）<input data-testid="admin-product-stock" required min="0" step="1" type="number" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} /></label><label>商品图标<input data-testid="admin-product-emoji" required value={form.emoji} onChange={(event) => setForm({ ...form, emoji: event.target.value })} /></label><label className="admin-checkbox"><input type="checkbox" checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} />上架销售</label><label className="admin-full">商品描述<textarea data-testid="admin-product-description" required value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label><div className="admin-full admin-cover-field"><span>商品封面</span><div className="admin-cover-upload"><div className="admin-cover-preview">{coverPreviewUrl ? <img data-testid="admin-product-cover-preview" src={coverPreviewUrl} alt="商品封面预览" /> : <span aria-hidden="true">＋</span>}</div><div><strong>{coverPreviewUrl ? '更换封面' : '上传商品封面'}</strong><small>支持 JPG、PNG、WEBP、GIF，最大 20 MB</small></div><input ref={coverInputRef} data-testid="admin-product-cover" type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={chooseCover} /></div>{coverPreviewUrl && <button data-testid="admin-remove-product-cover" type="button" className="admin-cover-remove" onClick={removeCover}>移除封面</button>}{coverError && <p className="admin-error">{coverError}</p>}</div></div>{error && <p className="admin-error" role="alert">{error}</p>}<div className="admin-modal-actions"><button type="button" className="admin-secondary" onClick={onClose}>取消</button><button data-testid="admin-save-product" className="admin-primary" disabled={saving}>{saving ? '保存中…' : '保存商品'}</button></div></form>;
   return embedded ? <main className="admin-embedded-product-page">{formContent}</main> : <div className="admin-modal-backdrop" role="presentation">{formContent}</div>;
 }

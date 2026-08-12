@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Address, api, CartItem, money, Product, User } from './api';
 import { AdminApp } from './admin';
-import { getProductCoverUrl, ProductCover } from './cloudbase-storage';
+import { getProductCoverUrl, ProductCover, productCoverFromStoredFields } from './cloudbase-storage';
 import './styles.css';
 import './address.css';
 import './product-cover.css';
@@ -85,8 +85,8 @@ function Header() {
 
 function Layout({ children }: { children: React.ReactNode }) { return <><Header /><main>{children}</main><footer>微光集市 · 稳定的本地自动化测试演示商城</footer></>; }
 function useProducts(query = '') { const [products, setProducts] = useState<Product[]>([]); useEffect(() => { api<{ products: Product[] }>(`/products${query}`).then((result) => setProducts(result.products)); }, [query]); return products; }
-function productCoverFromProduct(product: Product): ProductCover | null { if (!product.cover_bucket_id || !product.cover_path || !product.cover_original_name || !product.cover_mime_type || !product.cover_size_bytes) return null; return { bucketId: product.cover_bucket_id, path: product.cover_path, originalName: product.cover_original_name, mimeType: product.cover_mime_type, sizeBytes: Number(product.cover_size_bytes), visibility: 'public' }; }
-function ProductVisual({ product, detail = false }: { product: Product; detail?: boolean }) { const cover = productCoverFromProduct(product); let url: string | null = null; try { url = getProductCoverUrl(cover); } catch { /* Keep the seeded emoji visible if CloudBase is not configured. */ } return <div className={detail ? 'detail-emoji' : 'product-emoji'}>{url ? <img className="product-cover-image" src={url} alt={`${product.name}封面`} /> : product.emoji}</div>; }
+function productCoverFromProduct(product: Product): ProductCover | null { return productCoverFromStoredFields({ bucketId: product.cover_bucket_id, path: product.cover_path, originalName: product.cover_original_name, mimeType: product.cover_mime_type, sizeBytes: product.cover_size_bytes }); }
+function ProductVisual({ product, detail = false }: { product: Product; detail?: boolean }) { const cover = productCoverFromProduct(product); let url: string | null = null; try { url = getProductCoverUrl(cover); } catch { /* Keep the seeded emoji visible if the proxy is not configured. */ } return <div className={detail ? 'detail-emoji' : 'product-emoji'}>{url ? <img className="product-cover-image" src={url} alt={`${product.name}封面`} /> : product.emoji}</div>; }
 function ProductCard({ product }: { product: Product }) { return <article id={`product-card-${product.id}`} className="product-card" data-testid={`product-card-${product.id}`}><Link to={`/products/${product.id}`}><ProductVisual product={product} /><span className="category">{product.categoryName}</span><h3>{product.name}</h3><p>{product.description}</p><strong>{money(product.price)}</strong></Link></article>; }
 
 function Home() {
