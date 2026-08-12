@@ -6,7 +6,7 @@
 
 ## Current state
 
-- Repository: `mosshqq/shop-demo` (private), default branch `main`.
+- Repository: `pilaingliang-0920/shop-demo` (private), default branch `main`.
 - Production: `https://stable-shop-demo.wangpengyuanm.workers.dev`.
 - Automatic deploy: push to `main` runs `.github/workflows/deploy.yml`.
 - Completed: registration/login, catalog/category/search, product details, cart, address CRUD, simulated paid checkout, orders, API/UI Playwright coverage, D1 seed data, Worker deployment, and an administrator console.
@@ -15,6 +15,7 @@
 
 - The administrator console is available at `/admin`, with a separate HTTP-only `demo_admin_session` cookie and protected `/api/admin/*` API surface. The administrator demo account is `13900000001` / `Admin1234`; the fixed captcha remains `1234`. Login fields are intentionally blank by default.
 - The console includes marketing metrics (paid sales, orders, products, inventory warnings, users and recent orders) plus catalog search, filtering, editing, inventory changes and sale-status controls. Administrators can add products through a standalone `/admin/products/new?embedded=1` page loaded in a centered iframe modal from the product list.
+- Product creation and editing support an optional CloudBase Storage cover. The image is previewed locally before save; upload uses the public `public-assets` Bucket and persists a random object path plus metadata through migration `0003_product_covers.sql`. The storefront renders the public cover URL when present and falls back to the existing emoji.
 - Iframe completion and cancellation use same-origin `postMessage`; the parent closes the modal and refreshes the product list. If an administrator session expires inside the iframe, the login redirect preserves `embedded=1` so the creation page resumes after login.
 - `migrations/0002_admin_console.sql` adds `users.role`, `products.is_active`, and the administrator seed user. The local reset script now executes every numbered migration in order.
 - Public catalog endpoints only expose active products. Inactive cart products remain visible but cannot be updated or checked out; checkout returns a clear error until the customer removes them.

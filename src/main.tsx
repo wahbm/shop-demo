@@ -3,8 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Address, api, CartItem, money, Product, User } from './api';
 import { AdminApp } from './admin';
+import { getProductCoverUrl, ProductCover } from './cloudbase-storage';
 import './styles.css';
 import './address.css';
+import './product-cover.css';
 
 type AppContext = { user: User | null; authReady: boolean; refreshUser: () => Promise<void>; cartCount: number; refreshCart: () => Promise<void> };
 type Region = { name: string; cities: { name: string; districts: string[] }[] };
@@ -83,7 +85,9 @@ function Header() {
 
 function Layout({ children }: { children: React.ReactNode }) { return <><Header /><main>{children}</main><footer>微光集市 · 稳定的本地自动化测试演示商城</footer></>; }
 function useProducts(query = '') { const [products, setProducts] = useState<Product[]>([]); useEffect(() => { api<{ products: Product[] }>(`/products${query}`).then((result) => setProducts(result.products)); }, [query]); return products; }
-function ProductCard({ product }: { product: Product }) { return <article id={`product-card-${product.id}`} className="product-card" data-testid={`product-card-${product.id}`}><Link to={`/products/${product.id}`}><div className="product-emoji">{product.emoji}</div><span className="category">{product.categoryName}</span><h3>{product.name}</h3><p>{product.description}</p><strong>{money(product.price)}</strong></Link></article>; }
+function productCoverFromProduct(product: Product): ProductCover | null { if (!product.cover_bucket_id || !product.cover_path || !product.cover_original_name || !product.cover_mime_type || !product.cover_size_bytes) return null; return { bucketId: product.cover_bucket_id, path: product.cover_path, originalName: product.cover_original_name, mimeType: product.cover_mime_type, sizeBytes: Number(product.cover_size_bytes), visibility: 'public' }; }
+function ProductVisual({ product, detail = false }: { product: Product; detail?: boolean }) { const cover = productCoverFromProduct(product); let url: string | null = null; try { url = getProductCoverUrl(cover); } catch { /* Keep the seeded emoji visible if CloudBase is not configured. */ } return <div className={detail ? 'detail-emoji' : 'product-emoji'}>{url ? <img className="product-cover-image" src={url} alt={`${product.name}封面`} /> : product.emoji}</div>; }
+function ProductCard({ product }: { product: Product }) { return <article id={`product-card-${product.id}`} className="product-card" data-testid={`product-card-${product.id}`}><Link to={`/products/${product.id}`}><ProductVisual product={product} /><span className="category">{product.categoryName}</span><h3>{product.name}</h3><p>{product.description}</p><strong>{money(product.price)}</strong></Link></article>; }
 
 function Home() {
   const products = useProducts();
@@ -119,7 +123,7 @@ function ProductDetail() {
   useEffect(() => { api<Product>(`/products/${id}`).then(setProduct).catch((error) => setMessage(error.message)); }, [id]);
   if (!product) return <div className="empty">{message || '正在加载商品…'}</div>;
   const add = async () => { if (!user) return navigate('/login'); try { await api('/cart', { method: 'POST', body: JSON.stringify({ productId: product.id, quantity }) }); await refreshCart(); setMessage('已加入购物车'); } catch (error: any) { setMessage(error.message); } };
-  return <section className="detail"><div className="detail-emoji">{product.emoji}</div><div><span className="category">{product.categoryName}</span><h1>{product.name}</h1><p className="detail-desc">{product.description}</p><strong className="price">{money(product.price)}</strong><p>剩余库存：<b id="product-stock" data-testid="product-stock">{product.stock}</b></p><label>购买数量 <input id="quantity-input" name="quantity" data-testid="quantity-input" type="number" min="1" max={product.stock} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} /></label><button id="add-to-cart" className="primary" data-testid="add-to-cart" onClick={add}>加入购物车</button>{message && <Notice message={message} />}</div></section>;
+  return <section className="detail"><ProductVisual product={product} detail /><div><span className="category">{product.categoryName}</span><h1>{product.name}</h1><p className="detail-desc">{product.description}</p><strong className="price">{money(product.price)}</strong><p>剩余库存：<b id="product-stock" data-testid="product-stock">{product.stock}</b></p><label>购买数量 <input id="quantity-input" name="quantity" data-testid="quantity-input" type="number" min="1" max={product.stock} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} /></label><button id="add-to-cart" className="primary" data-testid="add-to-cart" onClick={add}>加入购物车</button>{message && <Notice message={message} />}</div></section>;
 }
 
 function RequireAuth({ children }: { children: React.ReactNode }) { const { user, authReady } = useApp(); const location = useLocation(); if (!authReady) return <div className="empty">正在加载账户信息…</div>; return user ? <>{children}</> : <Navigate to="/login" state={{ from: location.pathname }} replace />; }
@@ -211,4 +215,7 @@ function App() {
   return <Context.Provider value={{ user, authReady, refreshUser, cartCount, refreshCart }}><Layout><Routes><Route path="/" element={<Home />} /><Route path="/login" element={<Auth mode="login" />} /><Route path="/register" element={<Auth mode="register" />} /><Route path="/products" element={<Products />} /><Route path="/products/:id" element={<ProductDetail />} /><Route path="/cart" element={<RequireAuth><Cart /></RequireAuth>} /><Route path="/checkout" element={<RequireAuth><Checkout /></RequireAuth>} /><Route path="/orders" element={<RequireAuth><Orders /></RequireAuth>} /><Route path="/account/addresses" element={<RequireAuth><AddressPage /></RequireAuth>} /></Routes></Layout></Context.Provider>;
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode>{window.location.pathname.startsWith('/admin') ? <AdminApp /> : <BrowserRouter><App /></BrowserRouter>}</StrictMode>);
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+const appPath = window.location.pathname.slice(basePath.length) || '/';
+
+createRoot(document.getElementById('root')!).render(<StrictMode>{appPath.startsWith('/admin') ? <AdminApp /> : <BrowserRouter basename={import.meta.env.BASE_URL}><App /></BrowserRouter>}</StrictMode>);

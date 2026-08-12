@@ -1,10 +1,11 @@
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 
-type Bindings = { DB: D1Database; ASSETS: Fetcher };
+export type Bindings = { DB: D1Database; ASSETS: Fetcher };
 type User = { id: number; phone: string; name: string };
 type Admin = User & { role: 'admin' };
-type Product = { id: number; category_id: number; categoryName: string; name: string; description: string; price: number; stock: number; emoji: string; is_active: number };
+type ProductCover = { bucketId: string; path: string; originalName: string; mimeType: string; sizeBytes: number; visibility: 'public' };
+type Product = { id: number; category_id: number; categoryName: string; name: string; description: string; price: number; stock: number; emoji: string; cover_bucket_id: string | null; cover_path: string | null; cover_original_name: string | null; cover_mime_type: string | null; cover_size_bytes: number | null; cover_visibility: 'public'; is_active: number };
 type CartItem = { productId: number; quantity: number; name: string; price: number; stock: number; emoji: string; is_active: number };
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -33,6 +34,28 @@ async function requireAdmin(c: AppContext): Promise<Admin | null> {
   return admin;
 }
 const adminUnauthorized = (c: AppContext) => c.json({ message: '请使用管理员账号登录' }, 401);
+const PRODUCT_COVER_BUCKET = 'public-assets';
+const PRODUCT_COVER_MAX_BYTES = 20 * 1024 * 1024;
+const PRODUCT_COVER_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+
+function parseProductCover(input: unknown): ProductCover | null {
+  if (input === null) return null;
+  if (!input || typeof input !== 'object') throw new Error('商品封面信息无效');
+  const cover = input as Partial<ProductCover>;
+  const extension = PRODUCT_COVER_TYPES[cover.mimeType || ''];
+  const projectPath = cover.path || '';
+  if (cover.bucketId !== PRODUCT_COVER_BUCKET || cover.visibility !== 'public' || !extension || cover.sizeBytes === undefined || !Number.isInteger(Number(cover.sizeBytes)) || Number(cover.sizeBytes) <= 0 || Number(cover.sizeBytes) > PRODUCT_COVER_MAX_BYTES) {
+    throw new Error('商品封面信息无效，请重新上传');
+  }
+  const expectedPath = new RegExp(`^projects/[a-zA-Z0-9_-]+/product-covers/[a-zA-Z0-9-]+\\.${extension}$`);
+  if (!expectedPath.test(projectPath) || !cover.originalName?.trim() || cover.originalName.length > 255) throw new Error('商品封面路径无效，请重新上传');
+  return { bucketId: PRODUCT_COVER_BUCKET, path: projectPath, originalName: cover.originalName.trim(), mimeType: cover.mimeType!, sizeBytes: Number(cover.sizeBytes), visibility: 'public' };
+}
+
+function coverColumns(cover: ProductCover | null) {
+  return [cover?.bucketId || null, cover?.path || null, cover?.originalName || null, cover?.mimeType || null, cover?.sizeBytes || null, cover?.visibility || 'public'];
+}
+
 async function products(db: D1Database, where = '', params: unknown[] = []) {
   const result = await db.prepare(`SELECT p.*, c.name AS categoryName FROM products p JOIN categories c ON c.id = p.category_id ${where} ORDER BY p.id`).bind(...params).all<Product>();
   return result.results;
@@ -117,22 +140,30 @@ app.get('/api/admin/products', async (c) => {
 });
 app.post('/api/admin/products', async (c) => {
   const admin = await requireAdmin(c); if (!admin) return adminUnauthorized(c);
-  const { name, description, price, stock, emoji, categoryId, isActive = true } = await c.req.json<any>();
+  const { name, description, price, stock, emoji, categoryId, isActive = true, cover: coverInput } = await c.req.json<any>();
   if (!name?.trim() || !description?.trim() || !emoji?.trim() || !Number.isFinite(Number(price)) || Number(price) < 0 || !Number.isInteger(Number(stock)) || Number(stock) < 0) return c.json({ message: '请完整填写商品信息，价格和库存不能为负数' }, 400);
   const category = await c.env.DB.prepare('SELECT id FROM categories WHERE id = ?').bind(Number(categoryId)).first();
   if (!category) return c.json({ message: '请选择有效的商品分类' }, 400);
-  const result = await c.env.DB.prepare('INSERT INTO products (category_id, name, description, price, stock, emoji, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(Number(categoryId), name.trim(), description.trim(), Number(price), Number(stock), emoji.trim(), isActive ? 1 : 0).run();
+  let cover: ProductCover | null;
+  try { cover = parseProductCover(coverInput === undefined ? null : coverInput); } catch (error: any) { return c.json({ message: error.message }, 400); }
+  const result = await c.env.DB.prepare('INSERT INTO products (category_id, name, description, price, stock, emoji, cover_bucket_id, cover_path, cover_original_name, cover_mime_type, cover_size_bytes, cover_visibility, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(Number(categoryId), name.trim(), description.trim(), Number(price), Number(stock), emoji.trim(), ...coverColumns(cover), isActive ? 1 : 0).run();
   return c.json({ product: (await products(c.env.DB, 'WHERE p.id = ?', [Number(result.meta.last_row_id)]))[0] }, 201);
 });
 app.patch('/api/admin/products/:id', async (c) => {
   const admin = await requireAdmin(c); if (!admin) return adminUnauthorized(c);
   const id = Number(c.req.param('id')); const existing = await c.env.DB.prepare('SELECT id FROM products WHERE id = ?').bind(id).first();
   if (!existing) return c.json({ message: '商品不存在' }, 404);
-  const { name, description, price, stock, emoji, categoryId, isActive } = await c.req.json<any>();
+  const body = await c.req.json<any>(); const { name, description, price, stock, emoji, categoryId, isActive } = body;
   if (!name?.trim() || !description?.trim() || !emoji?.trim() || !Number.isFinite(Number(price)) || Number(price) < 0 || !Number.isInteger(Number(stock)) || Number(stock) < 0) return c.json({ message: '请完整填写商品信息，价格和库存不能为负数' }, 400);
   const category = await c.env.DB.prepare('SELECT id FROM categories WHERE id = ?').bind(Number(categoryId)).first();
   if (!category) return c.json({ message: '请选择有效的商品分类' }, 400);
-  await c.env.DB.prepare('UPDATE products SET category_id = ?, name = ?, description = ?, price = ?, stock = ?, emoji = ?, is_active = ? WHERE id = ?').bind(Number(categoryId), name.trim(), description.trim(), Number(price), Number(stock), emoji.trim(), isActive ? 1 : 0, id).run();
+  let cover: ProductCover | null | undefined;
+  try { cover = Object.prototype.hasOwnProperty.call(body, 'cover') ? parseProductCover(body.cover) : undefined; } catch (error: any) { return c.json({ message: error.message }, 400); }
+  if (cover === undefined) {
+    await c.env.DB.prepare('UPDATE products SET category_id = ?, name = ?, description = ?, price = ?, stock = ?, emoji = ?, is_active = ? WHERE id = ?').bind(Number(categoryId), name.trim(), description.trim(), Number(price), Number(stock), emoji.trim(), isActive ? 1 : 0, id).run();
+  } else {
+    await c.env.DB.prepare('UPDATE products SET category_id = ?, name = ?, description = ?, price = ?, stock = ?, emoji = ?, cover_bucket_id = ?, cover_path = ?, cover_original_name = ?, cover_mime_type = ?, cover_size_bytes = ?, cover_visibility = ?, is_active = ? WHERE id = ?').bind(Number(categoryId), name.trim(), description.trim(), Number(price), Number(stock), emoji.trim(), ...coverColumns(cover), isActive ? 1 : 0, id).run();
+  }
   return c.json({ product: (await products(c.env.DB, 'WHERE p.id = ?', [id]))[0] });
 });
 app.patch('/api/admin/products/:id/status', async (c) => {
