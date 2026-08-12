@@ -1,0 +1,90 @@
+.admin-cover-field {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #506078;
+}
+
+.admin-cover-upload {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  border: 1px dashed #cbd5e5;
+  border-radius: 10px;
+  padding: 12px;
+  background: #fafbfe;
+  cursor: pointer;
+}
+
+.admin-cover-upload:hover {
+  border-color: var(--admin-blue);
+  background: #f6f8ff;
+}
+
+.admin-cover-upload strong,
+.admin-cover-upload small {
+  display: block;
+}
+
+.admin-cover-upload strong {
+  color: var(--admin-blue);
+  font-size: 13px;
+}
+
+.admin-cover-upload small {
+  color: var(--admin-muted);
+  font-size: 11px;
+  font-weight: 400;
+  margin-top: 4px;
+}
+
+.admin-cover-upload input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.admin-cover-preview {
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #eef2f8;
+  color: #8c9ab1;
+  font-size: 25px;
+}
+
+.admin-cover-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.admin-cover-remove {
+  justify-self: start;
+  border: 0;
+  background: none;
+  color: #ba4c36;
+  font-size: 12px;
+  padding: 0;
+}
+
+.admin-product-thumb {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 8px;
+  background: #f5f7fc;
+  font-size: 23px;
+  object-fit: cover;
+}

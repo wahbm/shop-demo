@@ -24,6 +24,12 @@ CREATE TABLE products (
   price DECIMAL(12,2) NOT NULL,
   stock INT NOT NULL,
   emoji VARCHAR(32) NOT NULL,
+  cover_bucket_id VARCHAR(128) NULL,
+  cover_path VARCHAR(512) NULL,
+  cover_original_name VARCHAR(255) NULL,
+  cover_mime_type VARCHAR(128) NULL,
+  cover_size_bytes BIGINT NULL,
+  cover_visibility VARCHAR(16) NOT NULL DEFAULT 'public',
   is_active TINYINT NOT NULL DEFAULT 1,
   PRIMARY KEY (id),
   KEY products_category_id (category_id)

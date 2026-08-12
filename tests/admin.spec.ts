@@ -19,6 +19,9 @@ test('管理员可以登录、查看经营概览并管理商品', async ({ page 
   await expect(page.locator('.admin-modal-backdrop')).toBeVisible();
   const createFrame = page.frameLocator('[data-testid="admin-product-create-frame"]');
   await expect(createFrame.getByRole('heading', { name: '添加商品' })).toBeVisible();
+  await createFrame.getByTestId('admin-product-cover').setInputFiles({ name: 'cover.png', mimeType: 'image/png', buffer: Buffer.from('fake-png') });
+  await expect(createFrame.getByTestId('admin-product-cover-preview')).toBeVisible();
+  await createFrame.getByTestId('admin-remove-product-cover').click();
   await createFrame.getByTestId('admin-product-name').fill('后台新增测试商品');
   await createFrame.getByTestId('admin-product-price').fill('88');
   await createFrame.getByTestId('admin-product-stock').fill('12');
