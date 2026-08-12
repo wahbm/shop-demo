@@ -32,11 +32,11 @@ pnpm db:reset
 
 - 管理员账号：`13900000001` / `Admin1234`
 - 固定验证码：`1234`
-- 当前功能：管理员登录、营销数据统计、商品搜索筛选、新增/编辑商品、上下架与库存管理。新增商品时可上传 JPG、PNG、WEBP 或 GIF 封面，表单会先本地预览，保存时上传到 CloudBase PG Storage 的 `public-assets` Bucket。
+- 当前功能：管理员登录、营销数据统计、商品搜索筛选、新增/编辑商品、上下架与库存管理。新增商品时可上传 JPG、PNG、WEBP 或 GIF 封面，表单会先本地预览，保存时通过公共文件代理上传到 CloudBase PG Storage 的 `public-assets` Bucket。
 
-商品封面上传需要先复制 `.env.example` 为 `.env`，填写 CloudBase 项目 ID，并在 CloudBase 控制台开启“匿名登录”，确认 `public-assets` Bucket 的安全域名、CORS 和对象策略已配置。上传前端会为 Storage 建立匿名会话；前端只保存随机对象路径和文件元数据，不保存临时下载 URL。未配置 CloudBase 或未开启匿名登录时仍可使用本地预览，但保存带封面的商品会提示对应配置错误。
+商品封面上传需要先复制 `.env.example` 为 `.env`，填写代理项目 ID。浏览器只访问公共文件代理，不再直接访问 CloudBase Storage，因此不需要在 CloudBase 后台增加商城域名或开启匿名登录。前端只保存对象路径和文件元数据，不保存可变的代理 URL。
 
-部署工作流使用 GitHub Actions Repository Variable `CLOUDBASE_PROJECT_ID` 注入同一个前端构建变量；当前值为 `shop-demo`。该值是公开的对象路径命名空间，不是 CloudBase 密钥。
+部署工作流使用 GitHub Actions Repository Variable `CLOUDBASE_PROJECT_ID` 注入 `VITE_STORAGE_PROXY_PROJECT_ID`；当前值为 `shop-demo`。该值只是公开对象路径命名空间，不是认证信息。公共代理只支持公开文件，生产环境应增加项目级 API Key/JWT、验证码或网关限流来避免匿名上传、更新和删除滥用。
 
 管理后台使用独立的管理员会话和 `/api/admin/*` 接口；普通商城账号不能访问这些接口。
 

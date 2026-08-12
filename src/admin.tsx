@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { api, money, Product } from './api';
-import { getProductCoverUrl, ProductCover, uploadProductCover, validateProductCover } from './cloudbase-storage';
+import { getProductCoverUrl, ProductCover, productCoverFromStoredFields, uploadProductCover, validateProductCover } from './cloudbase-storage';
 import { getErrorMessage } from './error-message';
 import './admin.css';
 import './admin-cover.css';
@@ -14,13 +14,13 @@ type ProductForm = { name: string; description: string; price: string; stock: st
 const emptyProduct: ProductForm = { name: '', description: '', price: '', stock: '0', emoji: '📦', categoryId: '', isActive: true, cover: null };
 
 function productCoverFromProduct(product: Product | null): ProductCover | null {
-  if (!product?.cover_bucket_id || !product.cover_path || !product.cover_original_name || !product.cover_mime_type || !product.cover_size_bytes) return null;
-  return { bucketId: product.cover_bucket_id, path: product.cover_path, originalName: product.cover_original_name, mimeType: product.cover_mime_type, sizeBytes: Number(product.cover_size_bytes), visibility: 'public' };
+  if (!product) return null;
+  return productCoverFromStoredFields({ bucketId: product.cover_bucket_id, path: product.cover_path, originalName: product.cover_original_name, mimeType: product.cover_mime_type, sizeBytes: product.cover_size_bytes });
 }
 
 function ProductCoverImage({ cover, alt, className, fallback }: { cover: ProductCover | null | undefined; alt: string; className: string; fallback: string }) {
   let url: string | null = null;
-  try { url = getProductCoverUrl(cover); } catch { /* A bad/missing CloudBase config should keep the emoji fallback usable. */ }
+  try { url = getProductCoverUrl(cover); } catch { /* A bad/missing proxy config should keep the emoji fallback usable. */ }
   return url ? <img className={className} src={url} alt={alt} /> : <span className={className}>{fallback}</span>;
 }
 

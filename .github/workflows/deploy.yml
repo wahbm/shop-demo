@@ -28,7 +28,8 @@ jobs:
       - run: pnpm build
         env:
           VITE_BASE_PATH: /ww/shop-demo/
-          VITE_CLOUDBASE_PROJECT_ID: ${{ vars.CLOUDBASE_PROJECT_ID }}
+          VITE_STORAGE_PROXY_URL: https://8.130.116.192/v1
+          VITE_STORAGE_PROXY_PROJECT_ID: ${{ vars.CLOUDBASE_PROJECT_ID }}
       - name: Configure SSH
         run: |
           install -m 700 -d ~/.ssh

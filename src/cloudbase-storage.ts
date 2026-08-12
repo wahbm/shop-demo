@@ -1,17 +1,19 @@
-import cloudbase from '@cloudbase/js-sdk';
 import { getErrorMessage } from './error-message';
 
 export type ProductCover = {
-  bucketId: string;
+  bucketId: 'public-assets';
   path: string;
+  projectId: string;
+  scope: string;
   originalName: string;
   mimeType: string;
   sizeBytes: number;
   visibility: 'public';
+  contentUrl?: string;
+  downloadUrl?: string;
 };
 
-const DEFAULT_ENV_ID = 'ww-d9g604vycbc0aa139';
-const DEFAULT_BUCKET_ID = 'public-assets';
+const DEFAULT_PROXY_URL = 'https://8.130.116.192/v1';
 const DEFAULT_MAX_FILE_BYTES = 20 * 1024 * 1024;
 const PRODUCT_COVER_SCOPE = 'product-covers';
 const ALLOWED_IMAGE_TYPES: Record<string, string> = {
@@ -21,16 +23,12 @@ const ALLOWED_IMAGE_TYPES: Record<string, string> = {
   'image/gif': 'gif',
 };
 
-const configuredMaxFileBytes = Number(import.meta.env.VITE_CLOUDBASE_MAX_FILE_BYTES || DEFAULT_MAX_FILE_BYTES);
+const configuredMaxFileBytes = Number(import.meta.env.VITE_STORAGE_MAX_FILE_BYTES || DEFAULT_MAX_FILE_BYTES);
 const config = {
-  envId: import.meta.env.VITE_CLOUDBASE_ENV_ID || DEFAULT_ENV_ID,
-  projectId: import.meta.env.VITE_CLOUDBASE_PROJECT_ID || '',
-  bucketId: import.meta.env.VITE_CLOUDBASE_PUBLIC_BUCKET || DEFAULT_BUCKET_ID,
+  proxyUrl: String(import.meta.env.VITE_STORAGE_PROXY_URL || DEFAULT_PROXY_URL).replace(/\/$/, ''),
+  projectId: String(import.meta.env.VITE_STORAGE_PROXY_PROJECT_ID || ''),
   maxFileBytes: Number.isFinite(configuredMaxFileBytes) && configuredMaxFileBytes > 0 ? configuredMaxFileBytes : DEFAULT_MAX_FILE_BYTES,
 };
-
-let app: ReturnType<typeof cloudbase.init> | null = null;
-let storageAuthPromise: Promise<void> | null = null;
 
 function storageError(message: unknown, code: string) {
   const error = new Error(getErrorMessage(message, '商品封面上传失败，请稍后重试')) as Error & { code?: string };
@@ -40,35 +38,73 @@ function storageError(message: unknown, code: string) {
 
 function safeProjectId() {
   if (!config.projectId || !/^[a-zA-Z0-9_-]+$/.test(config.projectId)) {
-    throw storageError('请先配置 VITE_CLOUDBASE_PROJECT_ID，再上传商品封面', 'CONFIG_MISSING');
+    throw storageError('请先配置 VITE_STORAGE_PROXY_PROJECT_ID，再上传商品封面', 'CONFIG_MISSING');
   }
   return config.projectId;
 }
 
-function getBucket() {
-  if (!app) app = cloudbase.init({ env: config.envId });
-  return app.storage.from(config.bucketId);
+function safeScope(scope: string) {
+  if (!/^[a-zA-Z0-9_-]+$/.test(scope)) throw storageError('文件分类无效', 'INVALID_REQUEST');
+  return scope;
 }
 
-async function ensureStorageAuth() {
-  if (!app) app = cloudbase.init({ env: config.envId });
-  if (app.auth().hasLoginState()) return;
-  if (!storageAuthPromise) {
-    storageAuthPromise = (async () => {
-      const { error } = await app!.auth().signInAnonymously();
-      if (error) {
-        const code = String((error as { code?: unknown }).code || '');
-        if (code === 'login_type_disabled') {
-          throw storageError('请在 CloudBase 控制台开启“匿名登录”后再上传商品封面', 'STORAGE_AUTH_REQUIRED');
-        }
-        throw storageError(error, 'STORAGE_AUTH_REQUIRED');
-      }
-    })().catch((error) => {
-      storageAuthPromise = null;
-      throw error;
-    });
+function fileLocation(file: Pick<ProductCover, 'path'> & Partial<Pick<ProductCover, 'projectId' | 'scope'>>) {
+  const match = file.path.match(/^projects\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_-]+)\/(.+)$/);
+  const projectId = file.projectId || match?.[1];
+  const scope = file.scope || match?.[2];
+  const objectName = match?.[3];
+  if (!projectId || !scope || !objectName || !/^[a-zA-Z0-9_-]+$/.test(projectId) || !/^[a-zA-Z0-9_-]+$/.test(scope)) {
+    throw storageError('商品封面路径无效，请重新上传', 'INVALID_FILE');
   }
-  await storageAuthPromise;
+  return { projectId, scope, objectName };
+}
+
+function proxyFileUrl(file: Pick<ProductCover, 'path'> & Partial<Pick<ProductCover, 'projectId' | 'scope'>>, suffix = '') {
+  const location = fileLocation(file);
+  return `${config.proxyUrl}/files/${encodeURIComponent(location.projectId)}/${encodeURIComponent(location.scope)}/${location.objectName.split('/').map(encodeURIComponent).join('/')}${suffix}`;
+}
+
+function normalizeProxyUrl(value: string) {
+  if (!value) return value;
+  try {
+    const url = new URL(value);
+    const proxy = new URL(config.proxyUrl);
+    if (url.hostname === proxy.hostname && url.port === proxy.port) url.protocol = proxy.protocol;
+    return url.toString();
+  } catch {
+    return value;
+  }
+}
+
+function normalizeStorageRef(ref: ProductCover): ProductCover {
+  return { ...ref, contentUrl: normalizeProxyUrl(ref.contentUrl || proxyFileUrl(ref, '/content')), downloadUrl: normalizeProxyUrl(ref.downloadUrl || proxyFileUrl(ref, '/content?download=1')) };
+}
+
+function parseProxyResponse<T>(body: unknown, fallback: string): T {
+  if (!body || typeof body !== 'object') throw storageError(fallback, 'STORAGE_UNAVAILABLE');
+  const data = (body as { data?: unknown }).data;
+  if (!data) {
+    const error = (body as { error?: unknown }).error;
+    throw storageError(error || fallback, typeof error === 'object' && error !== null && 'code' in error ? String((error as { code: unknown }).code) : 'STORAGE_UNAVAILABLE');
+  }
+  return data as T;
+}
+
+async function proxyRequest<T>(path: string, options: RequestInit, fallback: string): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${config.proxyUrl}${path}`, options);
+  } catch (error) {
+    throw storageError(error, 'STORAGE_UNAVAILABLE');
+  }
+  const contentType = response.headers.get('content-type') || '';
+  const body = contentType.includes('application/json') ? await response.json() : await response.text();
+  if (!response.ok) {
+    const error = typeof body === 'object' && body !== null ? (body as { error?: unknown }).error : body;
+    const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as { code: unknown }).code) : 'STORAGE_UNAVAILABLE';
+    throw storageError(error || fallback, code);
+  }
+  return parseProxyResponse<T>(body, fallback);
 }
 
 function extensionForFile(file: File) {
@@ -82,46 +118,62 @@ export function validateProductCover(file: File) {
   if (!file) throw storageError('请选择商品封面图片', 'INVALID_FILE');
   const extension = extensionForFile(file);
   const nameExtension = file.name.split('.').pop()?.toLowerCase();
-  const allowedExtensions = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif']);
-  if (!nameExtension || !allowedExtensions.has(nameExtension)) {
+  if (!nameExtension || !new Set(['jpg', 'jpeg', 'png', 'webp', 'gif']).has(nameExtension)) {
     throw storageError('图片文件扩展名不受支持', 'INVALID_FILE');
   }
   return extension;
 }
 
-export async function uploadProductCover(file: File): Promise<ProductCover> {
-  const extension = validateProductCover(file);
+export async function uploadPublicFile(file: File, scope: string, metadata: Record<string, string> = {}) {
   const projectId = safeProjectId();
-  await ensureStorageAuth();
-  const uuid = typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const path = `projects/${projectId}/${PRODUCT_COVER_SCOPE}/${uuid}.${extension}`;
-  const result = await getBucket().upload(path, file, {
-    contentType: file.type,
-    cacheControl: '3600',
-    upsert: false,
-    metadata: { originalName: file.name, scope: PRODUCT_COVER_SCOPE },
-  });
-  if (result.error || !result.data) {
-    const statusCode = String((result.error as { statusCode?: unknown } | null)?.statusCode || '');
-    if (statusCode === 'MISSING_CREDENTIALS') {
-      throw storageError('请在 CloudBase 控制台开启“匿名登录”后再上传商品封面', 'STORAGE_AUTH_REQUIRED');
-    }
-    throw storageError(result.error, 'STORAGE_UNAVAILABLE');
-  }
-  return {
-    bucketId: config.bucketId,
-    path,
-    originalName: file.name,
-    mimeType: file.type,
-    sizeBytes: file.size,
-    visibility: 'public',
-  };
+  const form = new FormData();
+  form.set('projectId', projectId);
+  form.set('scope', safeScope(scope));
+  form.set('file', file);
+  Object.entries(metadata).forEach(([key, value]) => form.set(key, value));
+  return normalizeStorageRef(await proxyRequest<ProductCover>('/files', { method: 'POST', body: form }, '文件上传失败，请稍后重试'));
 }
 
-export function getProductCoverUrl(cover: Pick<ProductCover, 'bucketId' | 'path'> | null | undefined) {
-  if (!cover?.bucketId || !cover.path) return null;
-  if (!app) app = cloudbase.init({ env: config.envId });
-  return app.storage.from(cover.bucketId).getPublicUrl(cover.path).data.publicUrl;
+export async function uploadProductCover(file: File): Promise<ProductCover> {
+  validateProductCover(file);
+  return uploadPublicFile(file, PRODUCT_COVER_SCOPE, { originalName: file.name, scope: PRODUCT_COVER_SCOPE });
+}
+
+export function getProductCoverUrl(cover: Pick<ProductCover, 'contentUrl' | 'projectId' | 'scope' | 'path'> | null | undefined) {
+  if (!cover) return null;
+  return normalizeProxyUrl(cover.contentUrl || proxyFileUrl(cover, '/content'));
+}
+
+export function getDownloadUrl(file: Pick<ProductCover, 'path'> & Partial<Pick<ProductCover, 'downloadUrl' | 'projectId' | 'scope'>>) {
+  return normalizeProxyUrl(file.downloadUrl || proxyFileUrl(file, '/content?download=1'));
+}
+
+export async function downloadPublicFile(file: Pick<ProductCover, 'path'> & Partial<Pick<ProductCover, 'projectId' | 'scope'>>, options: { range?: string } = {}) {
+  let response: Response;
+  try {
+    response = await fetch(proxyFileUrl(file, '/content'), { headers: options.range ? { Range: options.range } : undefined });
+  } catch (error) {
+    throw storageError(error, 'STORAGE_UNAVAILABLE');
+  }
+  if (!response.ok) throw storageError(await response.text(), response.status === 404 ? 'NOT_FOUND' : 'STORAGE_UNAVAILABLE');
+  return response;
+}
+
+export async function updatePublicFile(file: ProductCover, nextFile: File, metadata: Record<string, string> = {}) {
+  validateProductCover(nextFile);
+  const form = new FormData();
+  form.set('file', nextFile);
+  Object.entries(metadata).forEach(([key, value]) => form.set(key, value));
+  return normalizeStorageRef(await proxyRequest<ProductCover>(`/files/${encodeURIComponent(file.projectId)}/${encodeURIComponent(file.scope)}/${fileLocation(file).objectName.split('/').map(encodeURIComponent).join('/')}`, { method: 'PUT', body: form }, '文件更新失败，请稍后重试'));
+}
+
+export async function removePublicFile(file: Pick<ProductCover, 'projectId' | 'scope' | 'path'>) {
+  const response = await fetch(proxyFileUrl(file), { method: 'DELETE' });
+  if (!response.ok) throw storageError(await response.text(), 'STORAGE_UNAVAILABLE');
+}
+
+export function productCoverFromStoredFields(fields: { bucketId: string | null; path: string | null; originalName: string | null; mimeType: string | null; sizeBytes: number | null }): ProductCover | null {
+  if (fields.bucketId !== 'public-assets' || !fields.path || !fields.originalName || !fields.mimeType || !fields.sizeBytes) return null;
+  const location = fileLocation({ path: fields.path });
+  return { bucketId: 'public-assets', path: fields.path, projectId: location.projectId, scope: location.scope, originalName: fields.originalName, mimeType: fields.mimeType, sizeBytes: Number(fields.sizeBytes), visibility: 'public' };
 }
