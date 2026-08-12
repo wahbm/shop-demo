@@ -30,6 +30,7 @@ const config = {
 };
 
 let app: ReturnType<typeof cloudbase.init> | null = null;
+let storageAuthPromise: Promise<void> | null = null;
 
 function storageError(message: unknown, code: string) {
   const error = new Error(getErrorMessage(message, '商品封面上传失败，请稍后重试')) as Error & { code?: string };
@@ -47,6 +48,27 @@ function safeProjectId() {
 function getBucket() {
   if (!app) app = cloudbase.init({ env: config.envId });
   return app.storage.from(config.bucketId);
+}
+
+async function ensureStorageAuth() {
+  if (!app) app = cloudbase.init({ env: config.envId });
+  if (app.auth().hasLoginState()) return;
+  if (!storageAuthPromise) {
+    storageAuthPromise = (async () => {
+      const { error } = await app!.auth().signInAnonymously();
+      if (error) {
+        const code = String((error as { code?: unknown }).code || '');
+        if (code === 'login_type_disabled') {
+          throw storageError('请在 CloudBase 控制台开启“匿名登录”后再上传商品封面', 'STORAGE_AUTH_REQUIRED');
+        }
+        throw storageError(error, 'STORAGE_AUTH_REQUIRED');
+      }
+    })().catch((error) => {
+      storageAuthPromise = null;
+      throw error;
+    });
+  }
+  await storageAuthPromise;
 }
 
 function extensionForFile(file: File) {
@@ -70,6 +92,7 @@ export function validateProductCover(file: File) {
 export async function uploadProductCover(file: File): Promise<ProductCover> {
   const extension = validateProductCover(file);
   const projectId = safeProjectId();
+  await ensureStorageAuth();
   const uuid = typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -80,7 +103,13 @@ export async function uploadProductCover(file: File): Promise<ProductCover> {
     upsert: false,
     metadata: { originalName: file.name, scope: PRODUCT_COVER_SCOPE },
   });
-  if (result.error || !result.data) throw storageError(result.error, 'STORAGE_UNAVAILABLE');
+  if (result.error || !result.data) {
+    const statusCode = String((result.error as { statusCode?: unknown } | null)?.statusCode || '');
+    if (statusCode === 'MISSING_CREDENTIALS') {
+      throw storageError('请在 CloudBase 控制台开启“匿名登录”后再上传商品封面', 'STORAGE_AUTH_REQUIRED');
+    }
+    throw storageError(result.error, 'STORAGE_UNAVAILABLE');
+  }
   return {
     bucketId: config.bucketId,
     path,
