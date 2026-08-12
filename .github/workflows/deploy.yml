@@ -28,6 +28,7 @@ jobs:
       - run: pnpm build
         env:
           VITE_BASE_PATH: /ww/shop-demo/
+          VITE_CLOUDBASE_PROJECT_ID: ${{ vars.CLOUDBASE_PROJECT_ID }}
       - name: Configure SSH
         run: |
           install -m 700 -d ~/.ssh
