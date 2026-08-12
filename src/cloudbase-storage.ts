@@ -1,4 +1,5 @@
 import cloudbase from '@cloudbase/js-sdk';
+import { getErrorMessage } from './error-message';
 
 export type ProductCover = {
   bucketId: string;
@@ -30,8 +31,8 @@ const config = {
 
 let app: ReturnType<typeof cloudbase.init> | null = null;
 
-function storageError(message: string, code: string) {
-  const error = new Error(message) as Error & { code?: string };
+function storageError(message: unknown, code: string) {
+  const error = new Error(getErrorMessage(message, '商品封面上传失败，请稍后重试')) as Error & { code?: string };
   error.code = code;
   return error;
 }
@@ -79,9 +80,7 @@ export async function uploadProductCover(file: File): Promise<ProductCover> {
     upsert: false,
     metadata: { originalName: file.name, scope: PRODUCT_COVER_SCOPE },
   });
-  if (result.error || !result.data) {
-    throw storageError(result.error?.message || '商品封面上传失败，请稍后重试', 'STORAGE_UNAVAILABLE');
-  }
+  if (result.error || !result.data) throw storageError(result.error, 'STORAGE_UNAVAILABLE');
   return {
     bucketId: config.bucketId,
     path,

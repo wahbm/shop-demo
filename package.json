@@ -10,6 +10,7 @@
     "dev:web": "vite",
     "build": "vite build",
     "db:reset": "tsx scripts/reset-local-d1.ts",
+    "db:migrate:mysql": "tsx scripts/migrate-mysql.ts",
     "cf:db:create": "wrangler d1 create stable-shop-demo",
     "cf:db:migrate": "wrangler d1 migrations apply stable-shop-demo --remote",
     "cf:deploy": "pnpm build && wrangler deploy",
