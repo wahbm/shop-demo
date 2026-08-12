@@ -76,3 +76,5 @@ pnpm exec playwright install chromium
 生产发布地址为 `http://<ECS 公网 IP>/ww/shop-demo/`。Nginx 提供前端资源并转发 `/ww/shop-demo/api/` 到本机 `127.0.0.1:8788`；MariaDB 只监听本机。首次初始化使用 `server/schema.mysql.sql` 导入演示数据。
 
 仓库中的 [deploy workflow](.github/workflows/deploy.yml) 会在推送到 `main` 或手动触发时构建前端、上传应用，并重启 `shop-demo` 服务。它依赖组织级 Variables：`DEPLOY_HOST`、`DEPLOY_PORT`、`DEPLOY_USER`、`DEPLOY_KNOWN_HOSTS`，组织级 Secret：`SSH_PRIVATE_KEY`，以及本仓库 Variables 中唯一的 `DEPLOY_PATH=/opt/ww/shop-demo`。
+
+每次 ECS 服务启动前会自动检查并补齐商品封面所需的 MariaDB 字段；如需手动执行，可在配置 `DATABASE_URL` 后运行 `pnpm db:migrate:mysql`。
