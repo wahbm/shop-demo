@@ -39,6 +39,6 @@ jobs:
           rsync -e "ssh -p ${{ vars.DEPLOY_PORT }}" -az --delete --exclude .git --exclude .github --exclude node_modules --exclude dist ./ "${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}:${{ vars.DEPLOY_PATH }}/"
           rsync -e "ssh -p ${{ vars.DEPLOY_PORT }}" -az --delete dist/ "${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}:${{ vars.DEPLOY_PATH }}/dist/"
       - name: Restart API service
-        run: ssh -p "${{ vars.DEPLOY_PORT }}" "${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}" "cd '${{ vars.DEPLOY_PATH }}' && pnpm install --prod --frozen-lockfile && sudo systemctl restart shop-demo"
+        run: ssh -p "${{ vars.DEPLOY_PORT }}" "${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}" "cd '${{ vars.DEPLOY_PATH }}' && pnpm install --prod --frozen-lockfile --ignore-scripts && sudo systemctl restart shop-demo"
       - name: Verify public health endpoint
         run: curl --fail --retry 5 --retry-delay 3 "http://${{ vars.DEPLOY_HOST }}/ww/shop-demo/api/health"
