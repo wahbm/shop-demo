@@ -28,7 +28,7 @@ Browser → Nginx / React SPA → /ww/shop-demo/api/* → Hono → MariaDB
 - The first two migrations seed 24 products, one customer, one administrator, an address, and an order. Remote migrations are tracked by Wrangler; create new numbered files for schema/data evolution.
 - Checkout is a local immediate-success simulation. There is no third-party payment, email, OAuth, coupon, review, refund, or administrative capability beyond the demo console.
 - `/admin` is a protected demo administrator console, not a production-grade back-office. It supplies data metrics and product lifecycle management; its standalone product creation screen is embedded into the list page through a same-origin iframe and `postMessage` completion events.
-- Product covers use the `src/cloudbase-storage.ts` adapter. The browser previews a selected image with an object URL, uploads it on save to `projects/<projectId>/product-covers/<uuid>.<ext>` in the public CloudBase `public-assets` Bucket, and stores only the bucket/path and technical metadata in `products`. CloudBase service credentials must never be added to the frontend.
+- Product covers use the `src/cloudbase-storage.ts` adapter. The browser previews a selected image with an object URL, establishes a CloudBase anonymous session before upload, sends the file on save to `projects/<projectId>/product-covers/<uuid>.<ext>` in the public CloudBase `public-assets` Bucket, and stores only the bucket/path and technical metadata in `products`. The CloudBase environment must have anonymous login enabled; service credentials must never be added to the frontend.
 - GitHub Actions requires organization deployment variables plus the restricted `SSH_PRIVATE_KEY`; no credential belongs in code.
 
 ## API surface
