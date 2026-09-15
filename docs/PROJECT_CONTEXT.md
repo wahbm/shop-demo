@@ -6,10 +6,18 @@
 
 ## Current state
 
-- Repository: `pilaingliang-0920/shop-demo` (private), default branch `main`.
-- Production: `https://stable-shop-demo.wangpengyuanm.workers.dev`.
+- Repository: `wahbm/shop-demo` (ECS deployment remote: `wahbm`), default branch `main`.
+- Production: Alibaba Cloud ECS at `http://<DEPLOY_HOST>/ww/shop-demo/`; the Workers URL is historical.
 - Automatic deploy: push to `main` runs `.github/workflows/deploy.yml`.
 - Completed: registration/login, catalog/category/search, product details, cart, address CRUD, simulated paid checkout, orders, API/UI Playwright coverage, D1 seed data, Worker deployment, and an administrator console.
+
+## API documentation update (2026-09-15, pending release)
+
+- Added Swagger UI at `/api/docs` and OpenAPI 3.0.3 JSON at `/api/openapi.json`, covering all 27 business operations, request/response schemas, errors and separate customer/admin cookies.
+- ECS public documentation path: `/ww/shop-demo/api/docs`; relative URLs preserve the reverse-proxy prefix.
+- Swagger UI loads pinned unpkg CDN assets. OpenAPI JSON is served directly by Hono; login through the documented endpoint enables same-origin cookie-based requests.
+- Definitions live in `worker/openapi.ts`; `tests/docs.spec.ts` checks route coverage, schema references and documentation URLs including trailing slashes and deployment prefixes.
+- Validation: 11 Playwright tests passed with a temporary port 5174 configuration because another project occupies 5173; TypeScript and Vite build passed.
 
 ## Latest handoff (2026-07-24)
 

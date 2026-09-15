@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { openapi, swaggerHtml } from './openapi';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 
 export type Bindings = { DB: D1Database; ASSETS: Fetcher };
@@ -9,6 +10,9 @@ type Product = { id: number; category_id: number; categoryName: string; name: st
 type CartItem = { productId: number; quantity: number; name: string; price: number; stock: number; emoji: string; is_active: number };
 
 const app = new Hono<{ Bindings: Bindings }>();
+app.get('/api/openapi.json', (c) => c.json(openapi));
+app.get('/api/docs', (c) => c.html(swaggerHtml));
+app.get('/api/docs/', (c) => c.html(swaggerHtml));
 const CAPTCHA = '1234';
 type AppContext = Context<{ Bindings: Bindings }>;
 

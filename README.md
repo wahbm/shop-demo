@@ -71,6 +71,16 @@ pnpm exec playwright install chromium
 
 所有接口均在 `/api` 下：认证（`/auth/*`）、分类和商品（`/categories`、`/products`）、购物车（`/cart`）、地址（`/addresses`）、结算（`/checkout`）和订单（`/orders`）。支付是立即返回“已支付”的本地模拟操作；没有真实支付、外部登录或远程商品资源。
 
+### Swagger 在线接口文档
+
+- 本地 Swagger UI：`http://127.0.0.1:5173/api/docs`（启动 `pnpm dev` 后）。
+- OpenAPI 3.0 JSON：`http://127.0.0.1:5173/api/openapi.json`，可导入 Postman、Apifox 等工具。
+- ECS 发布后入口：`http://<ECS 公网 IP>/ww/shop-demo/api/docs`；JSON 位于同级 `openapi.json`。
+
+文档覆盖商城和管理后台全部业务接口，包含请求字段、响应结构及错误状态。先在文档中执行用户或管理员登录，再使用 Try it out 调试对应接口；浏览器自动保存并携带 HttpOnly Cookie，无需手填 Authorize。写入操作会修改当前环境数据，结算仍为模拟支付。
+
+Swagger UI 使用固定版本的 unpkg CDN 资源，需联网加载；OpenAPI JSON 由本服务直接提供。相对 API 地址兼容本地、Worker 及 ECS 子路径部署。接口定义维护在 `worker/openapi.ts`，新增或修改接口时应同步更新；`tests/docs.spec.ts` 检查业务路由覆盖、引用和代理路径。
+
 ## 部署到阿里云 ECS
 
 生产发布地址为 `http://<ECS 公网 IP>/ww/shop-demo/`。Nginx 提供前端资源并转发 `/ww/shop-demo/api/` 到本机 `127.0.0.1:8788`；MariaDB 只监听本机。首次初始化使用 `server/schema.mysql.sql` 导入演示数据。
