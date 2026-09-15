@@ -11,6 +11,7 @@ Browser → Nginx / React SPA → /ww/shop-demo/api/* → Hono → MariaDB
 ## Layout
 
 - `src/`: React routes, API client, styles, stable `data-testid` contracts. `admin.tsx` and `admin.css`/`admin-frame.css` provide the administrator console.
+- `worker/openapi.ts`: OpenAPI contracts and Swagger UI HTML, served at `/api/openapi.json` and `/api/docs`; relative URLs support ECS path prefixes.
 - `worker/index.ts`: all JSON API endpoints and validation, shared by local Worker and ECS Node runtime.
 - `server/index.ts`: ECS Node entrypoint; `server/mysql-d1.ts` adapts MariaDB to the existing API data calls.
 - `server/mysql-migrations.ts`: idempotently adds MariaDB columns needed by existing ECS deployments before the API starts.
@@ -34,3 +35,5 @@ Browser → Nginx / React SPA → /ww/shop-demo/api/* → Hono → MariaDB
 ## API surface
 
 `/api/auth/*`, `/api/categories`, `/api/products`, `/api/cart`, `/api/addresses`, `/api/checkout`, `/api/orders`, and protected `/api/admin/auth/*`, `/api/admin/dashboard`, `/api/admin/products*`. Public product routes filter out inactive products; checkout blocks carts containing an inactive product. Preserve response messages and test IDs when teaching scripts rely on them.
+
+Swagger UI documents all 27 business operations and loads pinned CDN assets; the JSON specification is served locally. Browser debugging uses the existing same-origin login cookies. Keep contracts in sync with route changes; documentation tests check coverage and URL resolution.
