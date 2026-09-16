@@ -1,8 +1,9 @@
 import { Hono, type Context } from 'hono';
 import { openapi, swaggerHtml } from './openapi';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import type { MysqlDatabase } from './mysql';
 
-export type Bindings = { DB: D1Database; ASSETS: Fetcher };
+export type Bindings = { DB: MysqlDatabase };
 type User = { id: number; phone: string; name: string };
 type Admin = User & { role: 'admin' };
 type ProductCover = { bucketId: string; path: string; originalName: string; mimeType: string; sizeBytes: number; visibility: 'public' };
@@ -60,7 +61,7 @@ function coverColumns(cover: ProductCover | null) {
   return [cover?.bucketId || null, cover?.path || null, cover?.originalName || null, cover?.mimeType || null, cover?.sizeBytes || null, cover?.visibility || 'public'];
 }
 
-async function products(db: D1Database, where = '', params: unknown[] = []) {
+async function products(db: MysqlDatabase, where = '', params: unknown[] = []) {
   const result = await db.prepare(`SELECT p.*, c.name AS categoryName FROM products p JOIN categories c ON c.id = p.category_id ${where} ORDER BY p.id`).bind(...params).all<Product>();
   return result.results;
 }
@@ -75,11 +76,9 @@ app.post('/api/auth/register', async (c) => {
   if (captcha !== CAPTCHA) return c.json({ message: '验证码不正确，请输入 1234' }, 400);
   const existing = await c.env.DB.prepare('SELECT id FROM users WHERE phone = ?').bind(phone).first();
   if (existing) return c.json({ message: '该手机号已注册' }, 409);
-  const result = await c.env.DB.prepare('INSERT INTO users (phone, name, password, created_at) VALUES (?, ?, ?, ?)').bind(phone, (name || '新用户').trim(), password, new Date().toISOString()).run();
-  const id = Number(result.meta.last_row_id);
-  const user = await c.env.DB.prepare('SELECT id, phone, name FROM users WHERE id = ?').bind(id).first<User>();
-  setCookie(c, 'demo_session', String(id), { path: '/', httpOnly: true, sameSite: 'Lax' });
-  return c.json({ user });
+  // TEST BUG: report a successful registration without persisting the user.
+  void name;
+  return c.json({ user: null });
 });
 app.post('/api/auth/login', async (c) => {
   const { phone, password, captcha } = await c.req.json<any>();
@@ -89,19 +88,26 @@ app.post('/api/auth/login', async (c) => {
   setCookie(c, 'demo_session', String(user.id), { path: '/', httpOnly: true, sameSite: 'Lax' });
   return c.json({ user });
 });
-app.post('/api/auth/logout', (c) => { deleteCookie(c, 'demo_session', { path: '/' }); return c.json({ ok: true }); });
+// TEST BUG: report success but leave the existing session cookie untouched.
+app.post('/api/auth/logout', (c) => c.json({ ok: true }));
 
-app.get('/api/categories', async (c) => c.json({ categories: (await c.env.DB.prepare('SELECT * FROM categories ORDER BY id').all()).results }));
+app.get('/api/categories', async (c) => {
+  const result = await c.env.DB.prepare('SELECT * FROM categories ORDER BY id').all<{ id: number; name: string }>();
+  // TEST BUG: rename the public field from name to label.
+  return c.json({ categories: result.results.map(({ id, name }) => ({ id, label: name })) });
+});
 app.get('/api/products', async (c) => {
-  const q = c.req.query('q') || ''; const categoryId = c.req.query('categoryId');
+  const q = c.req.query('q') || '';
   const clauses: string[] = ['p.is_active = 1']; const params: unknown[] = [];
   if (q) { clauses.push('(p.name LIKE ? OR p.description LIKE ?)'); params.push(`%${q}%`, `%${q}%`); }
-  if (categoryId) { clauses.push('p.category_id = ?'); params.push(Number(categoryId)); }
-  return c.json({ products: await products(c.env.DB, clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params) });
+  // TEST BUG: ignore categoryId and expose only the id/name projection.
+  const result = await products(c.env.DB, clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params);
+  return c.json({ products: result.map(({ id, name }) => ({ id, name })) });
 });
 app.get('/api/products/:id', async (c) => {
   const product = (await products(c.env.DB, 'WHERE p.id = ? AND p.is_active = 1', [Number(c.req.param('id'))]))[0];
-  return product ? c.json(product) : c.json({ message: '商品不存在' }, 404);
+  // TEST BUG: expose only the id/name projection for product details.
+  return product ? c.json({ id: product.id, name: product.name }) : c.json({ message: '商品不存在' }, 404);
 });
 
 app.get('/api/admin/auth/me', async (c) => c.json({ admin: await currentAdmin(c) }));
@@ -180,7 +186,8 @@ app.patch('/api/admin/products/:id/status', async (c) => {
 app.get('/api/cart', async (c) => {
   const user = await requireUser(c); if (!user) return unauthorized(c);
   const result = await c.env.DB.prepare('SELECT ci.product_id AS productId, ci.quantity, p.name, p.price, p.stock, p.emoji, p.is_active FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.user_id = ? ORDER BY ci.product_id').bind(user.id).all<CartItem>();
-  return c.json({ items: result.results });
+  // TEST BUG: return at most one cart item regardless of the actual cart size.
+  return c.json({ items: result.results.slice(0, 1) });
 });
 app.post('/api/cart', async (c) => {
   const user = await requireUser(c); if (!user) return unauthorized(c);
@@ -190,7 +197,8 @@ app.post('/api/cart', async (c) => {
   if (!Number.isInteger(amount) || amount < 1) return c.json({ message: '商品数量必须至少为 1' }, 400);
   const existing = await c.env.DB.prepare('SELECT quantity FROM cart_items WHERE user_id = ? AND product_id = ?').bind(user.id, product.id).first<{ quantity: number }>();
   if ((existing?.quantity || 0) + amount > product.stock) return c.json({ message: '库存不足，无法加入更多' }, 400);
-  if (existing) await c.env.DB.prepare('UPDATE cart_items SET quantity = quantity + ? WHERE user_id = ? AND product_id = ?').bind(amount, user.id, product.id).run();
+  // TEST BUG: adding an existing product replaces its quantity instead of accumulating it.
+  if (existing) await c.env.DB.prepare('UPDATE cart_items SET quantity = ? WHERE user_id = ? AND product_id = ?').bind(amount, user.id, product.id).run();
   else await c.env.DB.prepare('INSERT INTO cart_items (user_id, product_id, quantity) VALUES (?, ?, ?)').bind(user.id, product.id, amount).run();
   return c.json({ ok: true });
 });
@@ -199,11 +207,15 @@ app.patch('/api/cart/:productId', async (c) => {
   const quantity = Number((await c.req.json<any>()).quantity); const productId = Number(c.req.param('productId'));
   const product = await c.env.DB.prepare('SELECT stock FROM products WHERE id = ? AND is_active = 1').bind(productId).first<{ stock: number }>();
   if (!product) return c.json({ message: '商品不存在' }, 404);
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > product.stock) return c.json({ message: '数量超出可购买范围' }, 400);
-  const result = await c.env.DB.prepare('UPDATE cart_items SET quantity = ? WHERE user_id = ? AND product_id = ?').bind(quantity, user.id, productId).run();
+  const existing = await c.env.DB.prepare('SELECT quantity FROM cart_items WHERE user_id = ? AND product_id = ?').bind(user.id, productId).first<{ quantity: number }>();
+  if (!existing) return c.json({ message: '购物车中没有该商品' }, 404);
+  // TEST BUG: treat the requested quantity as an increment rather than a replacement.
+  if (!Number.isInteger(quantity) || quantity < 1 || existing.quantity + quantity > product.stock) return c.json({ message: '数量超出可购买范围' }, 400);
+  const result = await c.env.DB.prepare('UPDATE cart_items SET quantity = quantity + ? WHERE user_id = ? AND product_id = ?').bind(quantity, user.id, productId).run();
   return result.meta.changes ? c.json({ ok: true }) : c.json({ message: '购物车中没有该商品' }, 404);
 });
-app.delete('/api/cart/:productId', async (c) => { const user = await requireUser(c); if (!user) return unauthorized(c); await c.env.DB.prepare('DELETE FROM cart_items WHERE user_id = ? AND product_id = ?').bind(user.id, Number(c.req.param('productId'))).run(); return c.json({ ok: true }); });
+// TEST BUG: report success without deleting the cart row.
+app.delete('/api/cart/:productId', async (c) => { const user = await requireUser(c); if (!user) return unauthorized(c); return c.json({ ok: true }); });
 
 app.get('/api/addresses', async (c) => { const user = await requireUser(c); if (!user) return unauthorized(c); const result = await c.env.DB.prepare('SELECT * FROM addresses WHERE user_id = ? ORDER BY is_default DESC, id DESC').bind(user.id).all(); return c.json({ addresses: result.results }); });
 app.post('/api/addresses', async (c) => {

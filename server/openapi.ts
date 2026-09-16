@@ -1,4 +1,4 @@
-/** Keep these contracts aligned with worker/index.ts; docs.spec.ts checks route coverage. */
+/** Keep these contracts aligned with server/app.ts; docs.spec.ts checks route coverage. */
 type Schema = Record<string, unknown>;
 const str = { type: 'string' };
 const int = { type: 'integer' };

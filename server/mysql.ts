@@ -1,7 +1,7 @@
 import mysql, { type ExecuteValues, type Pool, type PoolConnection, type ResultSetHeader, type RowDataPacket } from 'mysql2/promise';
 
 type Executor = Pool | PoolConnection;
-type D1Result = { meta: { changes: number; last_row_id: number } };
+type MutationResult = { meta: { changes: number; last_row_id: number } };
 
 function normalize(values: unknown[]): ExecuteValues[] {
   return values.map((value) => value === undefined ? null : value as ExecuteValues);
@@ -10,7 +10,7 @@ function normalize(values: unknown[]): ExecuteValues[] {
 export class MysqlStatement {
   private values: ExecuteValues[] = [];
 
-  constructor(private readonly database: MysqlD1Database, private readonly query: string) {}
+  constructor(private readonly database: MysqlDatabase, private readonly query: string) {}
 
   bind(...values: unknown[]) {
     this.values = normalize(values);
@@ -27,17 +27,17 @@ export class MysqlStatement {
     return { results: rows as T[] };
   }
 
-  async run(executor: Executor = this.database.pool): Promise<D1Result> {
+  async run(executor: Executor = this.database.pool): Promise<MutationResult> {
     const [result] = await executor.execute<ResultSetHeader>(this.query, this.values);
     return { meta: { changes: result.affectedRows, last_row_id: Number(result.insertId) } };
   }
 
-  async batchResult(executor: Executor): Promise<D1Result | { results: RowDataPacket[] }> {
+  async batchResult(executor: Executor): Promise<MutationResult | { results: RowDataPacket[] }> {
     return /^\s*SELECT\b/i.test(this.query) ? this.all(executor) : this.run(executor);
   }
 }
 
-export class MysqlD1Database {
+export class MysqlDatabase {
   readonly pool: Pool;
 
   constructor(databaseUrl: string) {
@@ -48,7 +48,7 @@ export class MysqlD1Database {
     return new MysqlStatement(this, query);
   }
 
-  async batch(statements: MysqlStatement[]) {
+  async batch(statements: MysqlStatement[]): Promise<any[]> {
     const connection = await this.pool.getConnection();
     try {
       await connection.beginTransaction();
