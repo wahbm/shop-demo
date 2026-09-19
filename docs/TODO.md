@@ -16,4 +16,4 @@ The deployed teaching flow and automatic deployment are operational.
 
 - Add product variants and pagination only with corresponding stable selector and Playwright contract updates.
 - Add a production monitoring/error-reporting path if the demo becomes broadly public.
-- Consider a staging Worker/D1 environment before introducing schema changes beyond the teaching dataset.
+- Consider a staging MariaDB schema before introducing schema changes beyond the teaching dataset.

@@ -1,34 +1,33 @@
 # 微光集市：稳定电商自动化测试 Demo
 
-一个可本地运行、也可部署到阿里云 ECS 的中文商城，用于演示 UI 自动化测试。项目不请求原教学站点或任何商品服务，因此不会触发外部限流。
+一个部署到阿里云 ECS 的中文商城，用于演示 UI 自动化测试。项目不请求原教学站点或任何商品服务，因此不会触发外部限流。
 
 ## 架构
 
 - React + Vite：商城单页应用与测试定位契约。
-- Hono：`/api/*` 认证、商品、购物车、地址和订单接口。
-- MariaDB：ECS 生产环境的共享数据库；`server/schema.mysql.sql` 创建商城所需结构与固定教学数据。
+- Hono + Node.js：`/api/*` 认证、商品、购物车、地址和订单接口。
+- MariaDB：ECS 共享数据库；`server/schema.mysql.sql` 创建商城所需结构与固定教学数据。
 
-本地开发仍使用 Cloudflare Worker/D1 模拟环境；ECS 生产环境由 Nginx 提供静态资源，并将 API 转发到受 systemd 管理的 Hono 服务。
+当前仓库只保留 ECS 版本：Nginx 提供静态资源，并将 API 转发到受 systemd 管理的 Hono 服务。
 
 ## 运行
 
 ```bash
 pnpm install
-pnpm db:reset
-pnpm dev
+DATABASE_URL='mysql://用户名:密码@127.0.0.1:3306/数据库名' pnpm dev
 ```
 
-打开 `http://127.0.0.1:5173`。本地 API 运行在 Cloudflare Worker 模拟环境（端口 `8787`），数据存储在本地 D1 模拟数据库中。要恢复到固定的初始状态，执行：
+打开 `http://127.0.0.1:5173`。API 由本地 Node 服务运行在 `8788` 端口，并连接 MariaDB。初始化数据库使用 `server/schema.mysql.sql`；已有 ECS 数据库的增量字段由服务启动时自动检查，也可执行：
 
 ```bash
-pnpm db:reset
+pnpm db:migrate:mysql
 ```
 
 演示账号为 `13800000000` / `Demo1234`，登录和注册页的固定验证码均为 `1234`。
 
 ## 管理后台 Demo
 
-访问 `http://127.0.0.1:5173/admin` 可进入管理后台。它和商城共用同一个 Worker 和 D1 数据库，因此商品、库存和订单数据会即时同步。
+访问 `http://127.0.0.1:5173/admin` 可进入管理后台。它和商城共用同一个 ECS API 和 MariaDB 数据库，因此商品、库存和订单数据会即时同步。
 
 - 管理员账号：`13900000001` / `Admin1234`
 - 固定验证码：`1234`
@@ -43,10 +42,10 @@ pnpm db:reset
 ## 自动化示例
 
 ```bash
-pnpm test
+DATABASE_URL='mysql://用户名:密码@127.0.0.1:3306/数据库名' pnpm test
 ```
 
-该命令先重置数据，再运行 Playwright 示例。首次运行 Playwright 时，如本机尚未安装浏览器，可执行：
+该命令连接当前 MariaDB 后运行 Playwright 示例，不会重置共享数据。首次运行 Playwright 时，如本机尚未安装浏览器，可执行：
 
 ```bash
 pnpm exec playwright install chromium
@@ -79,7 +78,7 @@ pnpm exec playwright install chromium
 
 文档覆盖商城和管理后台全部业务接口，包含请求字段、响应结构及错误状态。先在文档中执行用户或管理员登录，再使用 Try it out 调试对应接口；浏览器自动保存并携带 HttpOnly Cookie，无需手填 Authorize。写入操作会修改当前环境数据，结算仍为模拟支付。
 
-Swagger UI 使用固定版本的 unpkg CDN 资源，需联网加载；OpenAPI JSON 由本服务直接提供。相对 API 地址兼容本地、Worker 及 ECS 子路径部署。接口定义维护在 `worker/openapi.ts`，新增或修改接口时应同步更新；`tests/docs.spec.ts` 检查业务路由覆盖、引用和代理路径。
+Swagger UI 使用固定版本的 unpkg CDN 资源，需联网加载；OpenAPI JSON 由本服务直接提供。相对 API 地址兼容 ECS 子路径部署。接口定义维护在 `server/openapi.ts`，新增或修改接口时应同步更新；`tests/docs.spec.ts` 检查业务路由覆盖、引用和代理路径。
 
 ## 部署到阿里云 ECS
 

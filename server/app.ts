@@ -1,8 +1,9 @@
 import { Hono, type Context } from 'hono';
 import { openapi, swaggerHtml } from './openapi';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import type { MysqlDatabase } from './mysql';
 
-export type Bindings = { DB: D1Database; ASSETS: Fetcher };
+export type Bindings = { DB: MysqlDatabase };
 type User = { id: number; phone: string; name: string };
 type Admin = User & { role: 'admin' };
 type ProductCover = { bucketId: string; path: string; originalName: string; mimeType: string; sizeBytes: number; visibility: 'public' };
@@ -60,7 +61,7 @@ function coverColumns(cover: ProductCover | null) {
   return [cover?.bucketId || null, cover?.path || null, cover?.originalName || null, cover?.mimeType || null, cover?.sizeBytes || null, cover?.visibility || 'public'];
 }
 
-async function products(db: D1Database, where = '', params: unknown[] = []) {
+async function products(db: MysqlDatabase, where = '', params: unknown[] = []) {
   const result = await db.prepare(`SELECT p.*, c.name AS categoryName FROM products p JOIN categories c ON c.id = p.category_id ${where} ORDER BY p.id`).bind(...params).all<Product>();
   return result.results;
 }
@@ -91,7 +92,9 @@ app.post('/api/auth/login', async (c) => {
 });
 app.post('/api/auth/logout', (c) => { deleteCookie(c, 'demo_session', { path: '/' }); return c.json({ ok: true }); });
 
-app.get('/api/categories', async (c) => c.json({ categories: (await c.env.DB.prepare('SELECT * FROM categories ORDER BY id').all()).results }));
+app.get('/api/categories', async (c) => {
+  return c.json({ categories: (await c.env.DB.prepare('SELECT * FROM categories ORDER BY id').all()).results });
+});
 app.get('/api/products', async (c) => {
   const q = c.req.query('q') || ''; const categoryId = c.req.query('categoryId');
   const clauses: string[] = ['p.is_active = 1']; const params: unknown[] = [];
