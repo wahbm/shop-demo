@@ -7,16 +7,16 @@
 ## Current state
 
 - Repository: `wahbm/shop-demo` (ECS deployment remote: `wahbm`), default branch `main`.
-- Production: Alibaba Cloud ECS at `http://<DEPLOY_HOST>/ww/shop-demo/`; the Workers URL is historical.
+- Production: Alibaba Cloud ECS at `http://<DEPLOY_HOST>/ww/shop-demo/`.
 - Automatic deploy: push to `main` runs `.github/workflows/deploy.yml`.
-- Completed: registration/login, catalog/category/search, product details, cart, address CRUD, simulated paid checkout, orders, API/UI Playwright coverage, D1 seed data, Worker deployment, and an administrator console.
+- Completed: registration/login, catalog/category/search, product details, cart, address CRUD, simulated paid checkout, orders, API/UI Playwright coverage, MariaDB seed data, ECS deployment, and an administrator console.
 
 ## API documentation update (2026-09-15, pending release)
 
 - Added Swagger UI at `/api/docs` and OpenAPI 3.0.3 JSON at `/api/openapi.json`, covering all 27 business operations, request/response schemas, errors and separate customer/admin cookies.
 - ECS public documentation path: `/ww/shop-demo/api/docs`; relative URLs preserve the reverse-proxy prefix.
 - Swagger UI loads pinned unpkg CDN assets. OpenAPI JSON is served directly by Hono; login through the documented endpoint enables same-origin cookie-based requests.
-- Definitions live in `worker/openapi.ts`; `tests/docs.spec.ts` checks route coverage, schema references and documentation URLs including trailing slashes and deployment prefixes.
+- Definitions live in `server/openapi.ts`; `tests/docs.spec.ts` checks route coverage, schema references and documentation URLs including trailing slashes and deployment prefixes.
 - Validation: 11 Playwright tests passed with a temporary port 5174 configuration because another project occupies 5173; TypeScript and Vite build passed.
 
 ## Latest handoff (2026-07-24)
@@ -25,7 +25,7 @@
 - The console includes marketing metrics (paid sales, orders, products, inventory warnings, users and recent orders) plus catalog search, filtering, editing, inventory changes and sale-status controls. Administrators can add products through a standalone `/admin/products/new?embedded=1` page loaded in a centered iframe modal from the product list.
 - Product creation and editing support an optional CloudBase Storage cover. The image is previewed locally before save; upload uses the public `public-assets` Bucket and persists a random object path plus metadata through migration `0003_product_covers.sql`. The storefront renders the public cover URL when present and falls back to the existing emoji.
 - Iframe completion and cancellation use same-origin `postMessage`; the parent closes the modal and refreshes the product list. If an administrator session expires inside the iframe, the login redirect preserves `embedded=1` so the creation page resumes after login.
-- `migrations/0002_admin_console.sql` adds `users.role`, `products.is_active`, and the administrator seed user. The local reset script now executes every numbered migration in order.
+- `server/schema.mysql.sql` creates `users.role`, `products.is_active`, the administrator seed user and the fixed demo data. `server/mysql-migrations.ts` applies additive ECS schema changes at startup.
 - Public catalog endpoints only expose active products. Inactive cart products remain visible but cannot be updated or checked out; checkout returns a clear error until the customer removes them.
 - Admin, API and storefront coverage now totals 9 Playwright tests. The storefront address test locates its newly created address by content rather than a generated id, so it remains stable with concurrent API coverage.
 - Validation completed: `pnpm test` (9 Playwright tests), `pnpm exec tsc --noEmit`, and `pnpm build`.
@@ -46,13 +46,11 @@
 
 ```bash
 pnpm install
-pnpm db:reset       # deletes only local .wrangler state, then reseeds local D1
-pnpm dev            # Vite :5173 + local Worker/D1 :8787
+DATABASE_URL=... pnpm dev       # Vite :5173 + ECS-compatible Node/MariaDB API :8788
 pnpm test
 pnpm exec tsc --noEmit
 pnpm build
-pnpm cf:db:migrate  # apply pending migrations to remote D1
-pnpm cf:deploy      # build and deploy Worker/assets
+pnpm db:migrate:mysql
 ```
 
 Demo login: `13800000000` / `Demo1234`; captcha: `1234`.

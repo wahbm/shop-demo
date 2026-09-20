@@ -2,6 +2,6 @@
 
 - Work on `main` only when the user explicitly wants a direct release; otherwise use a branch and PR. PRs must be ready for review, not drafts.
 - Run `pnpm test` for behavior changes and `pnpm exec tsc --noEmit && pnpm build` for configuration/runtime changes.
-- `migrations/` is append-only after remote application. Add a numbered migration; never alter `0001_init.sql` or manually reset remote D1.
+- `server/schema.mysql.sql` is the initial MariaDB schema; applied production changes are append-only. Additive changes belong in `server/mysql-migrations.ts` and matching reference SQL.
 - Keep API selectors and `data-testid` values stable unless corresponding Playwright tests and README contracts are updated together.
-- Do not commit `.wrangler/`, `dist/`, test artifacts, local data, or credentials. GitHub Actions consumes `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets.
+- Do not commit `dist/`, test artifacts, local data, or credentials. GitHub Actions consumes the configured ECS deployment variables and `SSH_PRIVATE_KEY` secret.
