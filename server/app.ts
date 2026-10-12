@@ -156,19 +156,22 @@ app.post('/api/admin/products', async (c) => {
 });
 app.patch('/api/admin/products/:id', async (c) => {
   const admin = await requireAdmin(c); if (!admin) return adminUnauthorized(c);
-  const id = Number(c.req.param('id')); const existing = await c.env.DB.prepare('SELECT id FROM products WHERE id = ?').bind(id).first();
+  const id = Number(c.req.param('id')); const existing = await c.env.DB.prepare('SELECT id, is_active FROM products WHERE id = ?').bind(id).first<{ id: number; is_active: number }>();
   if (!existing) return c.json({ message: '商品不存在' }, 404);
+  if (existing.is_active) return c.json({ message: '销售中商品不可编辑，请先下架' }, 409);
   const body = await c.req.json<any>(); const { name, description, price, stock, emoji, categoryId, isActive } = body;
   if (!name?.trim() || !description?.trim() || !emoji?.trim() || !Number.isFinite(Number(price)) || Number(price) < 0 || !Number.isInteger(Number(stock)) || Number(stock) < 0) return c.json({ message: '请完整填写商品信息，价格和库存不能为负数' }, 400);
   const category = await c.env.DB.prepare('SELECT id FROM categories WHERE id = ?').bind(Number(categoryId)).first();
   if (!category) return c.json({ message: '请选择有效的商品分类' }, 400);
   let cover: ProductCover | null | undefined;
   try { cover = Object.prototype.hasOwnProperty.call(body, 'cover') ? parseProductCover(body.cover) : undefined; } catch (error: any) { return c.json({ message: error.message }, 400); }
+  let changes: number;
   if (cover === undefined) {
-    await c.env.DB.prepare('UPDATE products SET category_id = ?, name = ?, description = ?, price = ?, stock = ?, emoji = ?, is_active = ? WHERE id = ?').bind(Number(categoryId), name.trim(), description.trim(), Number(price), Number(stock), emoji.trim(), isActive ? 1 : 0, id).run();
+    changes = (await c.env.DB.prepare('UPDATE products SET category_id = ?, name = ?, description = ?, price = ?, stock = ?, emoji = ?, is_active = ? WHERE id = ? AND is_active = 0').bind(Number(categoryId), name.trim(), description.trim(), Number(price), Number(stock), emoji.trim(), isActive ? 1 : 0, id).run()).meta.changes;
   } else {
-    await c.env.DB.prepare('UPDATE products SET category_id = ?, name = ?, description = ?, price = ?, stock = ?, emoji = ?, cover_bucket_id = ?, cover_path = ?, cover_original_name = ?, cover_mime_type = ?, cover_size_bytes = ?, cover_visibility = ?, is_active = ? WHERE id = ?').bind(Number(categoryId), name.trim(), description.trim(), Number(price), Number(stock), emoji.trim(), ...coverColumns(cover), isActive ? 1 : 0, id).run();
+    changes = (await c.env.DB.prepare('UPDATE products SET category_id = ?, name = ?, description = ?, price = ?, stock = ?, emoji = ?, cover_bucket_id = ?, cover_path = ?, cover_original_name = ?, cover_mime_type = ?, cover_size_bytes = ?, cover_visibility = ?, is_active = ? WHERE id = ? AND is_active = 0').bind(Number(categoryId), name.trim(), description.trim(), Number(price), Number(stock), emoji.trim(), ...coverColumns(cover), isActive ? 1 : 0, id).run()).meta.changes;
   }
+  if (!changes) return c.json({ message: '商品状态已变化，请刷新后先下架再编辑' }, 409);
   return c.json({ product: (await products(c.env.DB, 'WHERE p.id = ?', [id]))[0] });
 });
 app.patch('/api/admin/products/:id/status', async (c) => {
