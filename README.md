@@ -1,34 +1,33 @@
 # 微光集市：稳定电商自动化测试 Demo
 
-一个可本地运行、也可部署到阿里云 ECS 的中文商城，用于演示 UI 自动化测试。项目不请求原教学站点或任何商品服务，因此不会触发外部限流。
+一个部署到阿里云 ECS 的中文商城，用于演示 UI 自动化测试。项目不请求原教学站点或任何商品服务，因此不会触发外部限流。
 
 ## 架构
 
 - React + Vite：商城单页应用与测试定位契约。
-- Hono：`/api/*` 认证、商品、购物车、地址和订单接口。
-- MariaDB：ECS 生产环境的共享数据库；`server/schema.mysql.sql` 创建商城所需结构与固定教学数据。
+- Hono + Node.js：`/api/*` 认证、商品、购物车、地址和订单接口。
+- MariaDB：ECS 共享数据库；`server/schema.mysql.sql` 创建商城所需结构与固定教学数据。
 
-本地开发仍使用 Cloudflare Worker/D1 模拟环境；ECS 生产环境由 Nginx 提供静态资源，并将 API 转发到受 systemd 管理的 Hono 服务。
+当前仓库只保留 ECS 版本：Nginx 提供静态资源，并将 API 转发到受 systemd 管理的 Hono 服务。
 
 ## 运行
 
 ```bash
 pnpm install
-pnpm db:reset
-pnpm dev
+DATABASE_URL='mysql://用户名:密码@127.0.0.1:3306/数据库名' pnpm dev
 ```
 
-打开 `http://127.0.0.1:5173`。本地 API 运行在 Cloudflare Worker 模拟环境（端口 `8787`），数据存储在本地 D1 模拟数据库中。要恢复到固定的初始状态，执行：
+打开 `http://127.0.0.1:5173`。API 由本地 Node 服务运行在 `8788` 端口，并连接 MariaDB。初始化数据库使用 `server/schema.mysql.sql`；已有 ECS 数据库的增量字段由服务启动时自动检查，也可执行：
 
 ```bash
-pnpm db:reset
+pnpm db:migrate:mysql
 ```
 
 演示账号为 `13800000000` / `Demo1234`，登录和注册页的固定验证码均为 `1234`。
 
 ## 管理后台 Demo
 
-访问 `http://127.0.0.1:5173/admin` 可进入管理后台。它和商城共用同一个 Worker 和 D1 数据库，因此商品、库存和订单数据会即时同步。
+访问 `http://127.0.0.1:5173/admin` 可进入管理后台。它和商城共用同一个 ECS API 和 MariaDB 数据库，因此商品、库存和订单数据会即时同步。
 
 - 管理员账号：`13900000001` / `Admin1234`
 - 固定验证码：`1234`
@@ -43,10 +42,10 @@ pnpm db:reset
 ## 自动化示例
 
 ```bash
-pnpm test
+TEST_DATABASE_URL='mysql://测试用户名:密码@127.0.0.1:3306/' pnpm test
 ```
 
-该命令先重置数据，再运行 Playwright 示例。首次运行 Playwright 时，如本机尚未安装浏览器，可执行：
+该命令在测试 MariaDB 中创建独立数据库，初始化演示数据后运行 Playwright，并在结束时删除本次数据库。首次运行 Playwright 时，如本机尚未安装浏览器，可执行：
 
 ```bash
 pnpm exec playwright install chromium
@@ -79,7 +78,7 @@ pnpm exec playwright install chromium
 
 文档覆盖商城和管理后台全部业务接口，包含请求字段、响应结构及错误状态。先在文档中执行用户或管理员登录，再使用 Try it out 调试对应接口；浏览器自动保存并携带 HttpOnly Cookie，无需手填 Authorize。写入操作会修改当前环境数据，结算仍为模拟支付。
 
-Swagger UI 使用固定版本的 unpkg CDN 资源，需联网加载；OpenAPI JSON 由本服务直接提供。相对 API 地址兼容本地、Worker 及 ECS 子路径部署。接口定义维护在 `worker/openapi.ts`，新增或修改接口时应同步更新；`tests/docs.spec.ts` 检查业务路由覆盖、引用和代理路径。
+Swagger UI 使用固定版本的 unpkg CDN 资源，需联网加载；OpenAPI JSON 由本服务直接提供。相对 API 地址兼容 ECS 子路径部署。接口定义维护在 `server/openapi.ts`，新增或修改接口时应同步更新；`tests/docs.spec.ts` 检查业务路由覆盖、引用和代理路径。
 
 ## 部署到阿里云 ECS
 
@@ -88,3 +87,13 @@ Swagger UI 使用固定版本的 unpkg CDN 资源，需联网加载；OpenAPI JS
 仓库中的 [deploy workflow](.github/workflows/deploy.yml) 会在推送到 `main` 或手动触发时构建前端、上传应用，并重启 `shop-demo` 服务。它依赖组织级 Variables：`DEPLOY_HOST`、`DEPLOY_PORT`、`DEPLOY_USER`、`DEPLOY_KNOWN_HOSTS`，组织级 Secret：`SSH_PRIVATE_KEY`，以及本仓库 Variables 中唯一的 `DEPLOY_PATH=/opt/ww/shop-demo`。
 
 每次 ECS 服务启动前会自动检查并补齐商品封面所需的 MariaDB 字段；如需手动执行，可在配置 `DATABASE_URL` 后运行 `pnpm db:migrate:mysql`。
+
+### 商品管理规则
+
+商品查询支持名称或描述模糊匹配，关键词、分类和状态条件取交集。新增和已下架商品编辑沿用现有表单与封面校验，勾选上架销售后保存立即上架。销售中商品的编辑表单全部只读，须先下架再修改；编辑接口遇到销售中商品或保存期间上架返回 HTTP 409。新增、编辑、上架、下架成功后显示对应成功提示并刷新当前筛选结果。
+
+### 隔离测试数据库
+
+`pnpm test` 和 `pnpm test:ui` 必须设置 `TEST_DATABASE_URL`，不会使用开发或生产的 `DATABASE_URL`。请使用测试 MariaDB 实例及具有创建、删除数据库权限的测试账号。每次运行创建随机的 `shop_demo_test_` 数据库，加载初始 schema 和演示数据，并在测试结束、失败或正常中断后删除该数据库。连接 URL 中指定的数据库名会被忽略，已有数据库不会被重置。
+
+测试 API 使用本机 18788 端口，前端使用 15173 端口，不复用已有服务；端口被占用时测试失败。请通过上述命令启动测试，直接运行 Playwright 不会自动建立隔离环境。若进程被强制终止或数据库失联而无法清理，请由测试实例管理员核对输出中的随机数据库名后清理该数据库。

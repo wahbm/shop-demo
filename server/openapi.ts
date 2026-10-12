@@ -1,4 +1,4 @@
-/** Keep these contracts aligned with worker/index.ts; docs.spec.ts checks route coverage. */
+/** Keep these contracts aligned with server/app.ts; docs.spec.ts checks route coverage. */
 type Schema = Record<string, unknown>;
 const str = { type: 'string' };
 const int = { type: 'integer' };
@@ -33,7 +33,7 @@ const paths: Record<string, Record<string, unknown>> = {};
 function operation(method: string, path: string, tag: string, summary: string, response: Schema, options: { body?: Schema; auth?: 'customer' | 'admin'; errors?: number[]; status?: number; description?: string; query?: Record<string, Schema> } = {}) {
   const parameters = [...path.matchAll(/\{(\w+)\}/g)].map((match) => ({ name: match[1], in: 'path', required: true, schema: int }));
   const responses: Record<string, unknown> = { [options.status || 200]: { description: '成功', content: json(response) } };
-  for (const code of new Set([...(options.errors || []), ...(options.auth ? [401] : [])])) responses[code] = { description: ({ 400: '参数错误或业务条件不满足', 401: '未登录或账号密码错误', 404: '资源不存在或不属于当前用户', 409: '手机号已注册' } as Record<number, string>)[code], content: json(ref('Error')) };
+  for (const code of new Set([...(options.errors || []), ...(options.auth ? [401] : [])])) responses[code] = { description: ({ 400: '参数错误或业务条件不满足', 401: '未登录或账号密码错误', 404: '资源不存在或不属于当前用户', 409: '资源或商品状态冲突' } as Record<number, string>)[code], content: json(ref('Error')) };
   (paths[path] ||= {})[method] = {
     tags: [tag], summary, operationId: `${method}_${path.replace(/[^a-zA-Z0-9]+/g, '_')}`, responses,
     ...(options.description ? { description: options.description } : {}),
@@ -60,7 +60,7 @@ operation('get', '/products/{id}', '商品', '在售商品详情', ref('Product'
 operation('get', '/admin/dashboard', '商品管理', '营销数据统计', object({ metrics: object({ paidOrderCount: int, totalSales: num, productCount: int, activeProductCount: int, lowStockCount: int, customerCount: int }), recentOrders: array(object({ order_no: str, total: num, status: str, created_at: str })) }), { auth: 'admin' });
 operation('get', '/admin/products', '商品管理', '所有商品列表', object({ products: array(ref('Product')) }), { auth: 'admin', query: { ...filters, status: { ...str, enum: ['active', 'inactive'] } } });
 operation('post', '/admin/products', '商品管理', '新增商品', object({ product: ref('Product') }), { auth: 'admin', body: ref('ProductInput'), errors: [400], status: 201, description: 'isActive 默认 true。' });
-operation('patch', '/admin/products/{id}', '商品管理', '编辑商品', object({ product: ref('Product') }), { auth: 'admin', body: ref('ProductInput'), errors: [400, 404], description: '须提交完整商品字段；isActive 省略时会下架。cover 省略时保留原封面。' });
+operation('patch', '/admin/products/{id}', '商品管理', '编辑商品', object({ product: ref('Product') }), { auth: 'admin', body: ref('ProductInput'), errors: [400, 404, 409], description: '仅已下架商品可编辑；销售中或保存期间已上架时返回 409。须提交完整商品字段；isActive 省略时会下架。cover 省略时保留原封面。' });
 operation('patch', '/admin/products/{id}/status', '商品管理', '商品上下架', ref('Ok'), { auth: 'admin', body: object({ isActive: bool }), errors: [404] });
 operation('get', '/cart', '购物车', '当前购物车', object({ items: array(ref('CartItem')) }), { auth: 'customer' });
 operation('post', '/cart', '购物车', '添加商品（累加数量）', ref('Ok'), { auth: 'customer', body: object({ productId: int, quantity: { ...int, minimum: 1, default: 1 } }, ['productId']), errors: [400, 404] });

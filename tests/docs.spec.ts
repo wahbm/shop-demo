@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import app from '../worker/index';
+import app from '../server/app';
 
 test('OpenAPI 覆盖全部业务路由且引用有效', async ({ request }) => {
   const response = await request.get('/api/openapi.json');
