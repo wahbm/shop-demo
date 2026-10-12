@@ -27,6 +27,7 @@ test('管理员可以登录、查看经营概览并管理商品', async ({ page 
   await createFrame.getByTestId('admin-product-stock').fill('12');
   await createFrame.getByTestId('admin-product-description').fill('供管理后台自动化测试使用。');
   await createFrame.getByTestId('admin-save-product').click();
+  await expect(page.getByRole('status')).toHaveText('添加商品成功');
   await expect(page.getByText('后台新增测试商品')).toBeVisible();
 });
 

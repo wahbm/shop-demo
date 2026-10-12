@@ -87,3 +87,7 @@ Swagger UI 使用固定版本的 unpkg CDN 资源，需联网加载；OpenAPI JS
 仓库中的 [deploy workflow](.github/workflows/deploy.yml) 会在推送到 `main` 或手动触发时构建前端、上传应用，并重启 `shop-demo` 服务。它依赖组织级 Variables：`DEPLOY_HOST`、`DEPLOY_PORT`、`DEPLOY_USER`、`DEPLOY_KNOWN_HOSTS`，组织级 Secret：`SSH_PRIVATE_KEY`，以及本仓库 Variables 中唯一的 `DEPLOY_PATH=/opt/ww/shop-demo`。
 
 每次 ECS 服务启动前会自动检查并补齐商品封面所需的 MariaDB 字段；如需手动执行，可在配置 `DATABASE_URL` 后运行 `pnpm db:migrate:mysql`。
+
+### 商品管理规则
+
+商品查询支持名称或描述模糊匹配，关键词、分类和状态条件取交集。新增和已下架商品编辑沿用现有表单与封面校验，勾选上架销售后保存立即上架。销售中商品的编辑表单全部只读，须先下架再修改；编辑接口遇到销售中商品或保存期间上架返回 HTTP 409。新增、编辑、上架、下架成功后显示对应成功提示并刷新当前筛选结果。
