@@ -53,6 +53,8 @@ test('下架编辑、上架只读、上下架提示及状态变化冲突', async
   await page.route('**/files/test/product-covers/readonly.png/content', route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a/ZkAAAAASUVORK5CYII=', 'base64') }));
   const product = await create(page, { name: `编辑验收${Date.now()}`, cover });
   await page.reload();
+  await page.getByTestId('admin-product-search').fill(product.name);
+  await page.locator('.admin-filter-bar').getByRole('button', { name: '查询', exact: true }).click();
   const row = page.getByTestId(`admin-product-row-${product.id}`);
   await page.getByTestId(`admin-edit-product-${product.id}`).click();
   await page.getByTestId('admin-product-name').fill(`${product.name}已修改`);
@@ -81,11 +83,18 @@ test('下架编辑、上架只读、上下架提示及状态变化冲突', async
   const persisted = await (await page.request.get(`/api/admin/products?q=${encodeURIComponent(product.name)}`)).json();
   expect(persisted.products[0]).toMatchObject({ name: `${product.name}已修改`, is_active: 1 });
   await modal.getByRole('button', { name: '取消', exact: true }).click();
+  await page.reload();
+  await page.getByTestId('admin-product-search').fill(product.name);
+  await page.locator('.admin-filter-bar').getByRole('button', { name: '查询', exact: true }).click();
   await row.getByRole('button', { name: '下架', exact: true }).click();
   await page.getByTestId(`admin-edit-product-${product.id}`).click();
   await modal.getByLabel('上架销售').check();
   await page.getByTestId('admin-save-product').click();
   await expect(row).toContainText('销售中');
+  await expect(page.getByTestId('admin-product-search')).toHaveValue(product.name);
+  await page.locator('.admin-filter-bar select').nth(1).selectOption('inactive');
+  await page.locator('.admin-filter-bar').getByRole('button', { name: '查询', exact: true }).click();
+  await expect(row).toHaveCount(0);
 });
 
 test('独立新增成功返回列表并提示，封面格式校验和失败反馈', async ({ page }) => {
@@ -120,4 +129,26 @@ test('编辑写入前状态改变时条件更新拒绝保存，包括保留和�
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ message: '商品状态已变化，请刷新后先下架再编辑' });
   }
+});
+
+
+test('商品字段与封面保存校验，未改变内容的下架编辑仍成功', async ({ request }) => {
+  await request.post('/api/admin/auth/login', { data: login });
+  const cover = { bucketId: 'public-assets', path: 'projects/test/product-covers/api.png', originalName: 'api.png', mimeType: 'image/png', sizeBytes: 16, visibility: 'public' };
+  const response = await request.post('/api/admin/products', { data: { ...input, cover } });
+  expect(response.status()).toBe(201);
+  const { product } = await response.json();
+  expect(product).toMatchObject({ is_active: 0, cover_path: cover.path });
+  const url = `/api/admin/products/${product.id}`;
+  // Omitting cover preserves it; an unchanged save is valid.
+  const unchanged = await request.patch(url, { data: input });
+  expect(unchanged.status()).toBe(200);
+  expect((await unchanged.json()).product.cover_path).toBe(cover.path);
+  for (const invalid of [{ price: -1 }, { stock: 1.5 }, { categoryId: 999999 }, { cover: { ...cover, sizeBytes: 20971521 } }, { cover: { ...cover, mimeType: 'text/plain' } }]) {
+    expect((await request.patch(url, { data: { ...input, ...invalid } })).status()).toBe(400);
+  }
+  const cleared = await request.patch(url, { data: { ...input, cover: null } });
+  expect(cleared.status()).toBe(200);
+  expect((await cleared.json()).product.cover_path).toBeNull();
+  expect((await request.patch('/api/admin/products/999999', { data: input })).status()).toBe(404);
 });
