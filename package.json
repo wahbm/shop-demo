@@ -10,8 +10,8 @@
     "dev:web": "vite",
     "build": "vite build",
     "db:migrate:mysql": "tsx scripts/migrate-mysql.ts",
-    "test": "playwright test",
-    "test:ui": "playwright test --ui"
+    "test": "tsx scripts/run-tests.ts",
+    "test:ui": "tsx scripts/run-tests.ts --ui"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.0",
