@@ -152,3 +152,27 @@ test('商品字段与封面保存校验，未改变内容的下架编辑仍成�
   expect((await cleared.json()).product.cover_path).toBeNull();
   expect((await request.patch('/api/admin/products/999999', { data: input })).status()).toBe(404);
 });
+
+test('滚动到列表底部后上下架提示仍在视口内，移动端同样可见', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 600 });
+  await openAdmin(page);
+  const product = await create(page, { name: `滚动提示${Date.now()}` });
+  await page.reload();
+  const row = page.getByTestId(`admin-product-row-${product.id}`);
+  await row.getByRole('button', { name: '上架', exact: true }).click();
+  const status = page.locator('.admin-success');
+  await expect(status).toHaveText('上架成功');
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(300);
+  await expect(status).toBeInViewport();
+  await page.setViewportSize({ width: 390, height: 600 });
+  await row.getByRole('button', { name: '下架', exact: true }).click();
+  await expect(status).toHaveText('下架成功');
+  await expect(status).toBeInViewport();
+  await page.getByRole('button', { name: '关闭成功提示' }).click();
+  await expect(status).toHaveCount(0);
+  await page.clock.install();
+  await row.getByRole('button', { name: '上架', exact: true }).click();
+  await expect(status).toHaveText('上架成功');
+  await page.clock.runFor(5100);
+  await expect(status).toHaveCount(0);
+});

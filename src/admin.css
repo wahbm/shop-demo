@@ -3,4 +3,9 @@
 .admin-product-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
 .admin-product-fields:disabled { opacity: .6; }
 .admin-product-fields:disabled input, .admin-product-fields:disabled select, .admin-product-fields:disabled textarea, .admin-product-fields:disabled button { cursor: not-allowed; }
-.admin-success { color: #166534; margin: 0 0 16px; }
+.admin-success { position: fixed; top: 16px; right: 24px; z-index: 30; max-width: calc(100vw - 48px); margin: 0; padding: 12px 20px; border: 1px solid #bbf7d0; border-radius: 8px; background: #f0fdf4; color: #166534; box-shadow: 0 4px 18px rgba(21, 32, 54, .15); display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; }
+
+.admin-success svg { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 2; }
+.admin-success button { display: grid; place-items: center; border: 0; padding: 4px; border-radius: 4px; background: transparent; color: #166534; cursor: pointer; }
+.admin-success button:hover { background: #dcfce7; }
+.admin-success button:focus-visible { outline: 2px solid #166534; outline-offset: 2px; }
